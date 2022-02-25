@@ -5,10 +5,9 @@ extern crate lazy_static;
 
 use std::{collections::HashMap, ptr::null_mut, sync::Mutex};
 use windows::{
-    Win32::Foundation::{BOOL, HWND, LPARAM, PWSTR},
+    Win32::Foundation::{BOOL, HWND, LPARAM},
     Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
-        SetForegroundWindow, MSG,
+        EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow, MSG,
     },
     Win32::UI::{
         Input::KeyboardAndMouse::{RegisterHotKey, MOD_ALT, MOD_NOREPEAT},
@@ -56,7 +55,6 @@ unsafe fn switch_next_window() -> bool {
         return false;
     }
     let hwnd = hwnd.unwrap();
-    inspect_window(hwnd);
     let res = SetForegroundWindow(hwnd);
     res.into()
 }
@@ -95,25 +93,6 @@ unsafe fn get_next_window() -> Option<HWND> {
     }
 }
 
-unsafe fn inspect_window(hwnd: HWND) {
-    let tid = get_window_pid(hwnd);
-    let title = get_window_title(hwnd).unwrap_or_default();
-    println!("{} {}", tid, title);
-}
-
 unsafe fn get_window_pid(hwnd: HWND) -> u32 {
     GetWindowThreadProcessId(hwnd, null_mut())
-}
-
-unsafe fn get_window_title(hwnd: HWND) -> Option<String> {
-    let mut text: [u16; 512] = [0; 512];
-    let len = GetWindowTextW(hwnd, PWSTR(text.as_mut_ptr()), text.len() as i32);
-    if len == 0 {
-        return None;
-    }
-    let text = String::from_utf16_lossy(&text[..len as usize]);
-    if text.is_empty() {
-        return None;
-    }
-    Some(text)
 }

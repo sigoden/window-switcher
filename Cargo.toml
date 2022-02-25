@@ -17,6 +17,8 @@ features = [
     "Win32_UI_Input_KeyboardAndMouse",
 ]
 
+[build-dependencies]
+embed-resource = "1.6.5"
 
 [profile.release]
 lto = true

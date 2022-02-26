@@ -1,4 +1,5 @@
 use windows::Win32::Foundation::{HWND, PWSTR};
+use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, MOD_ALT, MOD_NOREPEAT};
 use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK, MESSAGEBOX_STYLE};
 
 #[allow(unused)]
@@ -17,6 +18,10 @@ pub fn msgbox(text: &str, caption: &str, style: MESSAGEBOX_STYLE) {
     unsafe {
         MessageBoxW(HWND(0), text, caption, style);
     }
+}
+
+pub fn register_hotkey() {
+    unsafe { RegisterHotKey(HWND(0), 1, MOD_ALT | MOD_NOREPEAT, 0xC0) }; // alt + `
 }
 
 pub fn wchar_array(string: &str, dst: &mut [u16]) {

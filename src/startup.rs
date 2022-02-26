@@ -10,7 +10,7 @@ use windows::Win32::{
     },
 };
 
-use crate::utils::{output_debug, wchar_ptr};
+use crate::utils::{output_debug, wchar};
 
 const HKEY_RUN: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
 const HKEY_NAME: &str = "WindowsSwitcher";
@@ -65,12 +65,12 @@ fn check_startup() -> Result<bool> {
 
 fn enable_startup() -> Result<()> {
     let key = get_key()?;
-    let name = wchar_ptr(HKEY_NAME);
+    let name = wchar(HKEY_NAME);
     let path = get_exe_path();
     let ret = unsafe {
         RegSetValueExW(
             &key.hkey,
-            name,
+            PWSTR(name.as_ptr()),
             0,
             REG_SZ,
             path.as_ptr() as *const _,
@@ -85,13 +85,13 @@ fn enable_startup() -> Result<()> {
 
 fn disable_startup() -> Result<()> {
     let key = get_key()?;
-    let name = wchar_ptr(HKEY_NAME);
-    unsafe { RegDeleteValueW(&key.hkey, name) };
+    let name = wchar(HKEY_NAME);
+    unsafe { RegDeleteValueW(&key.hkey, PWSTR(name.as_ptr())) };
     Ok(())
 }
 
 fn get_value(hkey: &HKEY) -> Result<Vec<u16>> {
-    let name = wchar_ptr(HKEY_NAME);
+    let name = wchar(HKEY_NAME);
     let mut len: u32 = MAX_PATH;
     let mut value = vec![0u16; len as usize];
     let mut value_type: u32 = 0;
@@ -99,7 +99,7 @@ fn get_value(hkey: &HKEY) -> Result<Vec<u16>> {
         RegGetValueW(
             hkey,
             None,
-            name,
+            PWSTR(name.as_ptr()),
             RRF_RT_REG_SZ,
             &mut value_type,
             value.as_mut_ptr() as *mut _,
@@ -124,10 +124,11 @@ impl Drop for WrapHKey {
 
 fn get_key() -> Result<WrapHKey> {
     let mut hkey = HKEY::default();
+    let subkey = wchar(HKEY_RUN);
     let ret = unsafe {
         RegOpenKeyExW(
             HKEY_CURRENT_USER,
-            wchar_ptr(HKEY_RUN),
+            PWSTR(subkey.as_ptr()),
             0,
             KEY_ALL_ACCESS,
             &mut hkey as *mut _,

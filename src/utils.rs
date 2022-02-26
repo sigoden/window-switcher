@@ -1,4 +1,4 @@
-use windows::Win32::Foundation::{HWND, PWSTR};
+use windows::Win32::Foundation::HWND;
 use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, MOD_ALT, MOD_NOREPEAT};
 
 #[cfg(debug_assertions)]
@@ -34,11 +34,6 @@ pub fn wchar_array(string: &str, dst: &mut [u16]) {
 
     // Null terminator
     dst[s.len()] = 0;
-}
-
-pub fn wchar_ptr(string: &str) -> PWSTR {
-    let w = wchar(string);
-    PWSTR(w.as_ptr())
 }
 
 pub fn wchar(string: &str) -> Vec<u16> {

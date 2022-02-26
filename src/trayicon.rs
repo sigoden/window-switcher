@@ -1,8 +1,8 @@
 use crate::startup::Startup;
-use crate::utils::{output_debug, wchar_array, wchar_ptr};
+use crate::utils::{output_debug, wchar, wchar_array};
 
 use std::{mem::size_of, ptr};
-use windows::Win32::Foundation::GetLastError;
+use windows::Win32::Foundation::{GetLastError, PWSTR};
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconFromResourceEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
     GetCursorPos, GetWindowLongPtrW, LookupIconIdFromDirectoryEx, PostQuitMessage, RegisterClassW,
@@ -22,7 +22,7 @@ const ID_EXIT: usize = 3000;
 const ID_STARTUP: usize = 3001;
 const ID_TRAYICON: u32 = 5000;
 const WM_TRAYICON: u32 = WM_USER + 1;
-const TRAYICON_TOOLTIP: &str = "Windows Swither On";
+const TRAYICON_TOOLTIP: &str = "Windows Swither";
 const TRAYICON_ICON_BUFFER: &[u8] = include_bytes!("../assets/icon.ico");
 
 pub fn setup_trayicon() {
@@ -47,10 +47,10 @@ impl TrayIcon {
 
             debug_assert!(h_instance.0 != 0);
 
-            let wnd_class_name = wchar_ptr("Windows Switcher");
+            let wnd_class_name = wchar("Windows Switcher");
             let wnd_class = WNDCLASSW {
                 hInstance: h_instance,
-                lpszClassName: wnd_class_name,
+                lpszClassName: PWSTR(wnd_class_name.as_ptr()),
                 lpfnWndProc: Some(TrayIcon::winproc),
                 ..Default::default()
             };
@@ -66,12 +66,13 @@ impl TrayIcon {
                 hwnd: HWND(0),
                 startup: Startup::default(),
             };
+
             let ptr = Box::into_raw(Box::new(trayicon));
 
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE(0),
-                wnd_class_name,
-                wnd_class_name,
+                PWSTR(wnd_class_name.as_ptr()),
+                PWSTR(wnd_class_name.as_ptr()),
                 WINDOW_STYLE(0),
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
@@ -93,17 +94,11 @@ impl TrayIcon {
 
     pub fn add(&mut self) {
         self.data.hWnd = self.hwnd;
-        let ret = unsafe { Shell_NotifyIconW(NIM_ADD, &self.data) };
-        if !ret.as_bool() {
-            output_debug("TrayIcon: Fail to add trayicon");
-        }
+        unsafe { Shell_NotifyIconW(NIM_ADD, &self.data) };
     }
 
     pub fn delete(&mut self) {
-        let ret = unsafe { Shell_NotifyIconW(NIM_DELETE, &self.data) };
-        if !ret.as_bool() {
-            output_debug("TrayIon: Fail to delete trayicon");
-        }
+        unsafe { Shell_NotifyIconW(NIM_DELETE, &self.data) };
     }
 
     pub unsafe extern "system" fn winproc(
@@ -184,17 +179,18 @@ impl TrayIcon {
         data
     }
     fn create_menu(&mut self) -> HMENU {
-        let text = {
+        let startup_text = {
             if self.startup.check() {
-                wchar_ptr("Startup: on")
+                wchar("Startup: on")
             } else {
-                wchar_ptr("Startup: off")
+                wchar("Startup: off")
             }
         };
+        let exit_text = wchar("Exit");
         unsafe {
             let hmenu = CreatePopupMenu();
-            AppendMenuW(hmenu, MF_STRING, ID_STARTUP, text);
-            AppendMenuW(hmenu, MF_STRING, ID_EXIT, wchar_ptr("Exit"));
+            AppendMenuW(hmenu, MF_STRING, ID_STARTUP, PWSTR(startup_text.as_ptr()));
+            AppendMenuW(hmenu, MF_STRING, ID_EXIT, PWSTR(exit_text.as_ptr()));
             hmenu
         }
     }

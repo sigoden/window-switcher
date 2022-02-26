@@ -1,13 +1,17 @@
 #![windows_subsystem = "windows"]
 
+mod trayicon;
+
 #[macro_use]
 extern crate lazy_static;
 
 use std::{collections::HashMap, ptr::null_mut, sync::Mutex};
+use trayicon::TrayIcon;
 use windows::{
     Win32::Foundation::{BOOL, HWND, LPARAM},
     Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow, MSG,
+        DispatchMessageW, EnumWindows, GetForegroundWindow, GetWindowThreadProcessId,
+        SetForegroundWindow, MSG,
     },
     Win32::UI::{
         Input::KeyboardAndMouse::{RegisterHotKey, MOD_ALT, MOD_NOREPEAT},
@@ -20,28 +24,30 @@ lazy_static! {
 }
 
 fn main() {
-    unsafe {
-        register_hotkey();
-        wait_key_event();
-    };
+    TrayIcon::create();
+    register_hotkey();
+    eventloop();
 }
 
-unsafe fn wait_key_event() {
-    let mut msg = MSG::default();
-    loop {
-        let res = GetMessageW(&mut msg, HWND(0), 0, 0);
-        if res.as_bool() {
-            if msg.message == WM_HOTKEY {
-                switch_next_window();
+fn eventloop() {
+    unsafe {
+        let mut msg = MSG::default();
+        loop {
+            let res = GetMessageW(&mut msg, HWND(0), 0, 0);
+            if res.as_bool() {
+                if msg.message == WM_HOTKEY {
+                    switch_next_window();
+                }
+                DispatchMessageW(&msg);
+            } else {
+                break;
             }
-        } else {
-            break;
         }
     }
 }
 
-unsafe fn register_hotkey() -> bool {
-    let res = RegisterHotKey(HWND(0), 1, MOD_ALT | MOD_NOREPEAT, 0xC0); // alt + `
+fn register_hotkey() -> bool {
+    let res = unsafe { RegisterHotKey(HWND(0), 1, MOD_ALT | MOD_NOREPEAT, 0xC0) }; // alt + `
     res.into()
 }
 

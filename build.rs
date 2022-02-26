@@ -1,3 +1,3 @@
 fn main() {
-    embed_resource::compile("app.rc");
+    embed_resource::compile("assets/app.rc");
 }

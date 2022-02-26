@@ -1,19 +1,27 @@
-use std::{collections::HashMap, ptr::null_mut, sync::Mutex};
+use std::{collections::HashMap, sync::Mutex};
 use windows::{
-    Win32::Foundation::{BOOL, HWND, LPARAM},
+    Win32::Foundation::{BOOL, HWND, LPARAM, PWSTR},
+    Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
+        PROCESS_VM_READ,
+    },
     Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetForegroundWindow, GetWindowThreadProcessId, SetForegroundWindow,
+        EnumWindows, GetForegroundWindow, GetWindowTextLengthW, GetWindowThreadProcessId,
+        IsWindowVisible, SetForegroundWindow,
     },
 };
 
+use crate::utils::output_debug;
+
 lazy_static! {
-    static ref ALL_WINDOWS: Mutex<HashMap<u32, Vec<HWND>>> = Mutex::new(HashMap::new());
+    static ref ALL_WINDOWS: Mutex<HashMap<Vec<u16>, Vec<HWND>>> = Mutex::new(HashMap::new());
 }
 
 pub fn switch_next_window() -> bool {
     unsafe {
         ALL_WINDOWS.lock().unwrap().clear();
-        if enum_windows().is_err() {
+        if let Err(err) = enum_windows() {
+            output_debug(&format!("Windows: enum windows throw {}", err));
             return false;
         }
         let hwnd = get_next_window();
@@ -27,14 +35,22 @@ pub fn switch_next_window() -> bool {
 }
 
 extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
-    unsafe {
-        let tid = get_window_pid(hwnd);
-        if let Ok(mut all_windows) = ALL_WINDOWS.lock() {
-            all_windows.entry(tid).or_default().push(hwnd);
-            true.into()
-        } else {
-            false.into()
-        }
+    if !is_window_visible(hwnd) {
+        return true.into();
+    }
+    if !is_window_have_title(hwnd) {
+        return true.into();
+    }
+    let pid = get_window_pid(hwnd);
+    let module_path = get_module_path(pid);
+    if module_path.is_empty() {
+        return true.into();
+    }
+    if let Ok(mut all_windows) = ALL_WINDOWS.lock() {
+        all_windows.entry(module_path).or_default().push(hwnd);
+        true.into()
+    } else {
+        false.into()
     }
 }
 
@@ -48,8 +64,12 @@ fn get_next_window() -> Option<HWND> {
         let pid = get_window_pid(hwnd);
         (hwnd, pid)
     };
+    let module_path = get_module_path(pid);
+    if module_path.is_empty() {
+        return None;
+    }
     let all_windows = ALL_WINDOWS.lock().ok()?;
-    match all_windows.get(&pid) {
+    match all_windows.get(&module_path) {
         None => None,
         Some(windows) => {
             let len = windows.len();
@@ -63,6 +83,35 @@ fn get_next_window() -> Option<HWND> {
     }
 }
 
-unsafe fn get_window_pid(hwnd: HWND) -> u32 {
-    GetWindowThreadProcessId(hwnd, null_mut())
+fn get_window_pid(hwnd: HWND) -> u32 {
+    let mut pid: u32 = 0;
+    unsafe { GetWindowThreadProcessId(hwnd, &mut pid as *mut u32) };
+    pid
+}
+
+fn is_window_visible(hwnd: HWND) -> bool {
+    let ret = unsafe { IsWindowVisible(hwnd) };
+    ret.as_bool()
+}
+
+fn is_window_have_title(hwnd: HWND) -> bool {
+    let len = unsafe { GetWindowTextLengthW(hwnd) };
+    len > 0
+}
+
+fn get_module_path(pid: u32) -> Vec<u16> {
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, BOOL(0), pid) };
+    if handle.is_invalid() {
+        return Vec::default();
+    }
+    let mut len: u32 = 1024;
+    let mut name = vec![0u16; len as usize];
+    let ret = unsafe {
+        QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, PWSTR(name.as_ptr()), &mut len)
+    };
+    if !ret.as_bool() || len == 0 {
+        return Vec::default();
+    }
+    unsafe { name.set_len(len as usize) };
+    name
 }

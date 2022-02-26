@@ -22,6 +22,7 @@ features = [
     "Win32_System_Registry",
     "Win32_System_Diagnostics",
     "Win32_System_Diagnostics_Debug",
+    "Win32_System_Threading",
 ]
 
 [build-dependencies]

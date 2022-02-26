@@ -1,4 +1,5 @@
-use std::ffi::c_void;
+use crate::utils::{wchar_array, wchar_ptr};
+
 use std::{mem::size_of, ptr};
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconFromResourceEx, CreatePopupMenu, CreateWindowExW, DefWindowProcW,
@@ -8,7 +9,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WINDOW_EX_STYLE, WINDOW_STYLE, WM_CREATE, WM_LBUTTONUP, WM_RBUTTONDOWN, WM_USER, WNDCLASSW,
 };
 use windows::{
-    Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, PWSTR, WPARAM},
+    Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM},
     Win32::System::LibraryLoader::GetModuleHandleW,
     Win32::UI::Shell::{
         Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
@@ -18,8 +19,10 @@ use windows::{
 const ID_TRAYICON: u32 = 5000;
 const ID_TRAYICON_EXIT: u32 = 3000;
 const WM_TRAYICON: u32 = WM_USER + 1;
-const TRACION_TOOLTIP: &str = "Windows Swither On";
-const ICON_BUFFER: &[u8] = include_bytes!("../assets/icon.ico");
+
+pub fn setup_trayicon() {
+    TrayIcon::create()
+}
 
 pub struct TrayIcon {
     data: NOTIFYICONDATAW,
@@ -69,20 +72,20 @@ impl TrayIcon {
                 None,
                 None,
                 h_instance,
-                ptr as *mut c_void,
+                ptr as *mut _,
             );
         }
     }
 
     pub fn add(&mut self) {
         self.data.hWnd = self.hwnd;
-
-        unsafe { Shell_NotifyIconW(NIM_ADD, &mut self.data) };
+        unsafe { Shell_NotifyIconW(NIM_ADD, &self.data) };
     }
 
     pub fn delete(&mut self) {
-        unsafe { Shell_NotifyIconW(NIM_DELETE, &mut self.data) };
+        unsafe { Shell_NotifyIconW(NIM_DELETE, &self.data) };
     }
+
     pub unsafe extern "system" fn winproc(
         hwnd: HWND,
         msg: u32,
@@ -140,7 +143,7 @@ impl TrayIcon {
         unsafe { DefWindowProcW(self.hwnd, msg, wparam, lparam) }
     }
     fn gen_data() -> NOTIFYICONDATAW {
-        let icon = unsafe { convert_icon(ICON_BUFFER) };
+        let icon = unsafe { convert_icon(crate::TRAYICON_ICON_BUFFER) };
         let mut data = NOTIFYICONDATAW {
             cbSize: size_of::<NOTIFYICONDATAW>() as u32,
             uID: ID_TRAYICON,
@@ -149,7 +152,7 @@ impl TrayIcon {
             hIcon: icon,
             ..Default::default()
         };
-        wchar_array(TRACION_TOOLTIP, data.szTip.as_mut());
+        wchar_array(crate::TRAYICON_TOOLTIP, data.szTip.as_mut());
         data
     }
 }
@@ -159,7 +162,6 @@ impl Drop for TrayIcon {
         self.delete();
     }
 }
-
 unsafe fn convert_icon(buffer: &[u8]) -> HICON {
     let offset = { LookupIconIdFromDirectoryEx(buffer.as_ptr(), true, 0, 0, LR_DEFAULTCOLOR) };
     let icon_data = &buffer[offset as usize..];
@@ -172,25 +174,4 @@ unsafe fn convert_icon(buffer: &[u8]) -> HICON {
         0,
         LR_DEFAULTCOLOR,
     )
-}
-
-fn wchar_array(string: &str, dst: &mut [u16]) {
-    let mut s = string.encode_utf16().collect::<Vec<_>>();
-
-    // Truncate utf16 array to fit in the buffer with null terminator
-    s.truncate(dst.len() - 1);
-
-    dst[..s.len()].copy_from_slice(s.as_slice());
-
-    // Null terminator
-    dst[s.len()] = 0;
-}
-
-fn wchar_ptr(string: &str) -> PWSTR {
-    let w = wchar(string);
-    PWSTR(w.as_ptr())
-}
-
-fn wchar(string: &str) -> Vec<u16> {
-    format!("{}\0", string).encode_utf16().collect::<Vec<_>>()
 }

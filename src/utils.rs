@@ -1,27 +1,27 @@
 use windows::Win32::Foundation::{HWND, PWSTR};
 use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, MOD_ALT, MOD_NOREPEAT};
-use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK, MESSAGEBOX_STYLE};
 
-#[allow(unused)]
-pub fn info_msg(caption: &str) {
-    msgbox("Info", caption, MB_OK);
-}
+#[cfg(debug_assertions)]
+mod debug {
+    use std::ffi::CString;
 
-#[allow(unused)]
-pub fn error_msg(caption: &str) {
-    msgbox("Error", caption, MB_OK | MB_ICONERROR);
-}
-
-pub fn msgbox(text: &str, caption: &str, style: MESSAGEBOX_STYLE) {
-    let text = wchar_ptr(text);
-    let caption = wchar_ptr(caption);
-    unsafe {
-        MessageBoxW(HWND(0), text, caption, style);
+    use windows::Win32::Foundation::PSTR;
+    use windows::Win32::System::Diagnostics::Debug::OutputDebugStringA;
+    pub fn output_debug(text: &str) {
+        let data = CString::new(text).unwrap();
+        unsafe { OutputDebugStringA(PSTR(data.as_ptr() as *const u8)) };
     }
 }
+#[cfg(debug_assertions)]
+pub use debug::output_debug;
+#[cfg(not(debug_assertions))]
+pub fn output_debug(_text: &str) {}
 
 pub fn register_hotkey() {
-    unsafe { RegisterHotKey(HWND(0), 1, MOD_ALT | MOD_NOREPEAT, 0xC0) }; // alt + `
+    let ret = unsafe { RegisterHotKey(HWND(0), 1, MOD_ALT | MOD_NOREPEAT, 0xC0) }; // alt + `
+    if !ret.as_bool() {
+        output_debug("Utils: Fail to register hotkey");
+    }
 }
 
 pub fn wchar_array(string: &str, dst: &mut [u16]) {

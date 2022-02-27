@@ -43,14 +43,6 @@ jobs:
         toolchain: stable
         profile: minimal # minimal component installation (ie, no documentation)
 
-    - name: Install prerequisites
-      shell: bash
-      run: |
-        case ${{ matrix.target }} in
-          armv7-unknown-linux-*) sudo apt-get -y update ; sudo apt-get -y install gcc-arm-linux-gnueabihf ;;
-          aarch64-unknown-linux-musl) sudo apt-get -y update ; sudo apt-get -y install gcc-aarch64-linux-gnu ;;
-        esac
-
     - name: Show Version Information (Rust, cargo, GCC)
       shell: bash
       run: |
@@ -80,7 +72,7 @@ jobs:
         bin=${GITHUB_REPOSITORY##*/}
         src=`pwd`
         dist=$src/dist
-        name=$bin-$version-$target
+        name=$bin-$version
         executable=target/$target/release/$bin
 
         if [[ "$RUNNER_OS" == "Windows" ]]; then
@@ -91,15 +83,9 @@ jobs:
         cp $executable $dist
         cd $dist
 
-        if [[ "$RUNNER_OS" == "Windows" ]]; then
-            archive=$dist/$name.zip
-            7z a $archive *
-            echo "::set-output name=archive::`pwd -W`/$name.zip"
-        else
-            archive=$dist/$name.tar.gz
-            tar czf $archive *
-            echo "::set-output name=archive::$archive"
-        fi
+        archive=$dist/$name.zip
+        7z a $archive *
+        echo "::set-output name=archive::`pwd -W`/$name.zip"
 
     - name: Publish Archive
       uses: softprops/action-gh-release@v0.1.5

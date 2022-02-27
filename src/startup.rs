@@ -1,4 +1,5 @@
 use anyhow::{bail, Result};
+use wchar::{wch, wchar_t};
 use windows::Win32::{
     Foundation::{ERROR_SUCCESS, MAX_PATH, PWSTR},
     System::{
@@ -10,67 +11,45 @@ use windows::Win32::{
     },
 };
 
-use crate::utils::{output_debug, wchar};
-
-const HKEY_RUN: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
-const HKEY_NAME: &str = "WindowsSwitcher";
+const HKEY_RUN: &[wchar_t] = wch!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+const HKEY_NAME: &[wchar_t] = wch!("WindowsSwitcher");
 
 #[derive(Default)]
 pub struct Startup {
-    enable: Option<bool>,
+    pub is_enable: bool,
 }
 
 impl Startup {
-    pub fn check(&mut self) -> bool {
-        match self.enable {
-            Some(enable) => enable,
-            None => match check_startup() {
-                Ok(enable) => {
-                    self.enable = Some(enable);
-                    enable
-                }
-                Err(err) => {
-                    output_debug(&format!("Startup: {}", err));
-                    false
-                }
-            },
-        }
+    pub fn create() -> Result<Self> {
+        let enable = check()?;
+        Ok(Self { is_enable: enable })
     }
-    pub fn toggle(&mut self) {
-        let is_enable = self.check();
-        let ret = {
-            if is_enable {
-                disable_startup()
-            } else {
-                enable_startup()
-            }
-        };
-        match ret {
-            Ok(_) => {
-                self.enable = Some(!is_enable);
-            }
-            Err(err) => {
-                output_debug(&format!("Startup: {}", err));
-            }
+    pub fn toggle(&mut self) -> Result<()> {
+        let is_enable = self.is_enable;
+        if is_enable {
+            disable()?;
+        } else {
+            enable()?;
         }
+        self.is_enable = !is_enable;
+        Ok(())
     }
 }
 
-fn check_startup() -> Result<bool> {
+fn check() -> Result<bool> {
     let key = get_key()?;
     let value = get_value(&key.hkey)?;
     let path = get_exe_path();
     Ok(value == path)
 }
 
-fn enable_startup() -> Result<()> {
+fn enable() -> Result<()> {
     let key = get_key()?;
-    let name = wchar(HKEY_NAME);
     let path = get_exe_path();
     let ret = unsafe {
         RegSetValueExW(
             &key.hkey,
-            PWSTR(name.as_ptr()),
+            PWSTR(HKEY_NAME.as_ptr()),
             0,
             REG_SZ,
             path.as_ptr() as *const _,
@@ -83,15 +62,13 @@ fn enable_startup() -> Result<()> {
     Ok(())
 }
 
-fn disable_startup() -> Result<()> {
+fn disable() -> Result<()> {
     let key = get_key()?;
-    let name = wchar(HKEY_NAME);
-    unsafe { RegDeleteValueW(&key.hkey, PWSTR(name.as_ptr())) };
+    unsafe { RegDeleteValueW(&key.hkey, PWSTR(HKEY_NAME.as_ptr())) };
     Ok(())
 }
 
 fn get_value(hkey: &HKEY) -> Result<Vec<u16>> {
-    let name = wchar(HKEY_NAME);
     let mut len: u32 = MAX_PATH;
     let mut value = vec![0u16; len as usize];
     let mut value_type: u32 = 0;
@@ -99,7 +76,7 @@ fn get_value(hkey: &HKEY) -> Result<Vec<u16>> {
         RegGetValueW(
             hkey,
             None,
-            PWSTR(name.as_ptr()),
+            PWSTR(HKEY_NAME.as_ptr()),
             RRF_RT_REG_SZ,
             &mut value_type,
             value.as_mut_ptr() as *mut _,
@@ -124,11 +101,10 @@ impl Drop for WrapHKey {
 
 fn get_key() -> Result<WrapHKey> {
     let mut hkey = HKEY::default();
-    let subkey = wchar(HKEY_RUN);
     let ret = unsafe {
         RegOpenKeyExW(
             HKEY_CURRENT_USER,
-            PWSTR(subkey.as_ptr()),
+            PWSTR(HKEY_RUN.as_ptr()),
             0,
             KEY_ALL_ACCESS,
             &mut hkey as *mut _,

@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use std::{collections::HashMap, sync::Mutex};
 use windows::{
     Win32::Foundation::{BOOL, HWND, LPARAM, PWSTR},
@@ -11,27 +12,25 @@ use windows::{
     },
 };
 
-use crate::utils::output_debug;
-
 lazy_static! {
     static ref ALL_WINDOWS: Mutex<HashMap<Vec<u16>, Vec<HWND>>> = Mutex::new(HashMap::new());
 }
 
-pub fn switch_next_window() -> bool {
-    unsafe {
-        ALL_WINDOWS.lock().unwrap().clear();
-        if let Err(err) = enum_windows() {
-            output_debug(&format!("Windows: enum windows throw {}", err));
-            return false;
-        }
-        let hwnd = get_next_window();
-        if hwnd.is_none() {
-            return false;
-        }
-        let hwnd = hwnd.unwrap();
-        let res = SetForegroundWindow(hwnd);
-        res.into()
+pub fn switch_next_window() -> Result<bool> {
+    ALL_WINDOWS
+        .lock()
+        .map_err(|_| anyhow!("Fail to unlock ALL_WINDOWS"))?
+        .clear();
+    enum_windows()?;
+    let hwnd = get_next_window();
+    if hwnd.is_none() {
+        return Ok(false);
     }
+    let hwnd = hwnd.unwrap();
+    unsafe { SetForegroundWindow(hwnd) }
+        .ok()
+        .map_err(|e| anyhow!("Fail to set window to foreground, {:?}", e))?;
+    Ok(true)
 }
 
 extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
@@ -54,8 +53,9 @@ extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
     }
 }
 
-fn enum_windows() -> windows::core::Result<()> {
+fn enum_windows() -> Result<()> {
     unsafe { EnumWindows(Some(enum_window), LPARAM(0)).ok() }
+        .map_err(|e| anyhow!("Fail to enum windows {}", e))
 }
 
 fn get_next_window() -> Option<HWND> {

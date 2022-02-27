@@ -1,11 +1,14 @@
 #[macro_use]
 extern crate lazy_static;
 
+mod app;
 mod startup;
+mod switch;
 mod trayicon;
-mod utils;
-mod windows;
+#[macro_use]
+mod macros;
 
-pub use crate::trayicon::setup_trayicon;
-pub use crate::utils::register_hotkey;
-pub use crate::windows::switch_next_window;
+use windows::core::Error as Win32Error;
+use windows::core::Result as Win32Result;
+
+pub use crate::app::start_app;

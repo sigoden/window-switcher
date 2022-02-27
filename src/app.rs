@@ -7,7 +7,9 @@ use anyhow::{anyhow, bail, Result};
 use wchar::{wchar_t, wchz};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, PWSTR, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, MOD_ALT, MOD_NOREPEAT};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    RegisterHotKey, HOT_KEY_MODIFIERS, MOD_ALT, MOD_NOREPEAT,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowLongPtrW,
     PostQuitMessage, RegisterClassW, SetWindowLongPtrW, TranslateMessage, CREATESTRUCTW,
@@ -18,6 +20,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub const WM_USER_TRAYICON: u32 = WM_USER + 1;
 pub const MENU_CMD_EXIT: u32 = 1;
 pub const MENU_CMD_STARTUP: u32 = 2;
+pub const HOTKEY: (HOT_KEY_MODIFIERS, u32) = (MOD_ALT, 0xC0);
 
 pub const NAME: &[wchar_t] = wchz!("Windows Switcher");
 
@@ -84,7 +87,7 @@ impl App {
         .ok()
         .map_err(|e| anyhow!("Fail to create window, {}", e))?;
 
-        unsafe { RegisterHotKey(hwnd, 1, MOD_ALT | MOD_NOREPEAT, 0xC0) }
+        unsafe { RegisterHotKey(hwnd, 1, HOTKEY.0 | MOD_NOREPEAT, HOTKEY.1) }
             .ok()
             .map_err(|e| anyhow!("Fail to register hotkey, {}", e))?;
 

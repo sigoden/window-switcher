@@ -1,5 +1,8 @@
 use anyhow::{anyhow, Result};
-use std::{collections::HashMap, sync::Mutex};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Mutex,
+};
 use windows::{
     Win32::Foundation::{BOOL, HWND, LPARAM, PWSTR},
     Win32::System::Threading::{
@@ -13,7 +16,8 @@ use windows::{
 };
 
 lazy_static! {
-    static ref ALL_WINDOWS: Mutex<HashMap<Vec<u16>, Vec<HWND>>> = Mutex::new(HashMap::new());
+    static ref ALL_WINDOWS: Mutex<BTreeMap<Vec<u16>, BTreeSet<isize>>> =
+        Mutex::new(BTreeMap::new());
 }
 
 pub fn switch_next_window() -> Result<bool> {
@@ -46,7 +50,7 @@ extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
         return true.into();
     }
     if let Ok(mut all_windows) = ALL_WINDOWS.lock() {
-        all_windows.entry(module_path).or_default().push(hwnd);
+        all_windows.entry(module_path).or_default().insert(hwnd.0);
         true.into()
     } else {
         false.into()
@@ -76,9 +80,10 @@ fn get_next_window() -> Option<HWND> {
             if len == 1 {
                 return None;
             }
-            let index = windows.iter().position(|v| *v == hwnd)?;
+            let values: Vec<isize> = windows.iter().cloned().collect();
+            let index = windows.iter().position(|v| *v == hwnd.0)?;
             let index = (index + 1) % len;
-            Some(windows[index])
+            Some(HWND(values[index]))
         }
     }
 }

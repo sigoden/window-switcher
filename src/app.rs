@@ -1,7 +1,7 @@
 use crate::startup::Startup;
 use crate::switch::switch_next_window;
 use crate::trayicon::TrayIcon;
-use crate::{output_debug, Win32Error};
+use crate::{log_error, log_info, Win32Error};
 
 use anyhow::{anyhow, bail, Result};
 use wchar::{wchar_t, wchz};
@@ -23,7 +23,7 @@ pub const NAME: &[wchar_t] = wchz!("Windows Switcher");
 
 pub fn start_app() {
     if let Err(err) = App::start() {
-        output_debug!(&err.to_string());
+        log_error!(&err.to_string());
     }
 }
 
@@ -37,7 +37,7 @@ impl App {
     pub fn start() -> Result<()> {
         let instance = unsafe { GetModuleHandleW(None) }
             .ok()
-            .map_err(|e| anyhow!("Fail to get module handle, {:?}", e))?;
+            .map_err(|e| anyhow!("Fail to get module handle, {}", e))?;
 
         debug_assert!(instance.0 != 0);
 
@@ -82,11 +82,11 @@ impl App {
             )
         }
         .ok()
-        .map_err(|e| anyhow!("Fail to create window, {:?}", e))?;
+        .map_err(|e| anyhow!("Fail to create window, {}", e))?;
 
         unsafe { RegisterHotKey(hwnd, 1, MOD_ALT | MOD_NOREPEAT, 0xC0) }
             .ok()
-            .map_err(|e| anyhow!("Fail to register hotkey, {:?}", e))?;
+            .map_err(|e| anyhow!("Fail to register hotkey, {}", e))?;
 
         let mut message = MSG::default();
         unsafe {
@@ -108,7 +108,7 @@ impl App {
         match Self::handle_wm(hwnd, msg, wparam, lparam) {
             Ok(ret) => ret,
             Err(err) => {
-                output_debug!(&err.to_string());
+                log_error!(&err.to_string());
                 DefWindowProcW(hwnd, msg, wparam, lparam)
             }
         }
@@ -117,7 +117,7 @@ impl App {
     fn handle_wm(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Result<LRESULT> {
         match msg {
             WM_CREATE => unsafe {
-                output_debug!("Handle msg=WM_CREATE");
+                log_info!("Handle msg=WM_CREATE");
                 let create_struct: &mut CREATESTRUCTW = &mut *(lparam.0 as *mut _);
                 let app: &mut App = &mut *(create_struct.lpCreateParams as *mut _);
                 SetWindowLongPtrW(hwnd, GWL_USERDATA, app as *mut _ as _);
@@ -125,14 +125,14 @@ impl App {
                 app.trayicon.add(hwnd)?;
             },
             WM_HOTKEY => {
-                output_debug!("Handle msg=WM_NOTIFY");
+                log_info!("Handle msg=WM_NOTIFY");
                 switch_next_window()?;
             }
             WM_USER_TRAYICON => {
                 let app = retrive_app(hwnd)?;
                 let keycode = lparam.0 as u32;
                 if keycode == WM_LBUTTONUP || keycode == WM_RBUTTONUP {
-                    output_debug!("Handle msg=WM_TAYICON");
+                    log_info!("Handle msg=WM_TAYICON");
                     app.trayicon.popup(app.startup.is_enable)?;
                 }
                 return Ok(LRESULT(0));
@@ -141,13 +141,14 @@ impl App {
                 let value = wparam.0 as u32;
                 let kind = ((value >> 16) & 0xffff) as u16;
                 let id = (value & 0xffff) as u32;
-                output_debug!("Handle msg=WM_COMMAND {} {}", kind, id);
                 if kind == 0 {
                     match id {
                         MENU_CMD_EXIT => {
+                            log_info!("Handle msg=MENU_CMD_EXIT");
                             unsafe { PostQuitMessage(0) };
                         }
                         MENU_CMD_STARTUP => {
+                            log_info!("Handle msg=MENU_CMD_STARTUP");
                             let app = retrive_app(hwnd)?;
                             app.startup.toggle()?;
                         }

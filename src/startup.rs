@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
-use wchar::{wch, wchar_t};
+use wchar::{wchar_t, wchz};
 use windows::Win32::{
-    Foundation::{ERROR_SUCCESS, MAX_PATH, PWSTR},
+    Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, MAX_PATH, PWSTR},
     System::{
         LibraryLoader::GetModuleFileNameW,
         Registry::{
@@ -11,8 +11,8 @@ use windows::Win32::{
     },
 };
 
-const HKEY_RUN: &[wchar_t] = wch!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
-const HKEY_NAME: &[wchar_t] = wch!("WindowsSwitcher");
+const HKEY_RUN: &[wchar_t] = wchz!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+const HKEY_NAME: &[wchar_t] = wchz!("WindowsSwitcher");
 
 #[derive(Default)]
 pub struct Startup {
@@ -28,17 +28,21 @@ impl Startup {
         let is_enable = self.is_enable;
         if is_enable {
             disable()?;
+            self.is_enable = false;
         } else {
             enable()?;
+            self.is_enable = true;
         }
-        self.is_enable = !is_enable;
         Ok(())
     }
 }
 
 fn check() -> Result<bool> {
     let key = get_key()?;
-    let value = get_value(&key.hkey)?;
+    let value = match get_value(&key.hkey)? {
+        Some(value) => value,
+        None => return Ok(false),
+    };
     let path = get_exe_path();
     Ok(value == path)
 }
@@ -64,11 +68,14 @@ fn enable() -> Result<()> {
 
 fn disable() -> Result<()> {
     let key = get_key()?;
-    unsafe { RegDeleteValueW(&key.hkey, PWSTR(HKEY_NAME.as_ptr())) };
+    let ret = unsafe { RegDeleteValueW(&key.hkey, PWSTR(HKEY_NAME.as_ptr())) };
+    if ret != ERROR_SUCCESS {
+        bail!("Fail to delele reg value, {:?}", ret);
+    }
     Ok(())
 }
 
-fn get_value(hkey: &HKEY) -> Result<Vec<u16>> {
+fn get_value(hkey: &HKEY) -> Result<Option<Vec<u16>>> {
     let mut len: u32 = MAX_PATH;
     let mut value = vec![0u16; len as usize];
     let mut value_type: u32 = 0;
@@ -84,9 +91,12 @@ fn get_value(hkey: &HKEY) -> Result<Vec<u16>> {
         )
     };
     if ret != ERROR_SUCCESS {
+        if ret == ERROR_FILE_NOT_FOUND {
+            return Ok(None);
+        }
         bail!("Fail to get reg value, {:?}", ret);
     }
-    Ok(value)
+    Ok(Some(value))
 }
 
 struct WrapHKey {

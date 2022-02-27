@@ -33,7 +33,7 @@ pub fn switch_next_window() -> Result<bool> {
     let hwnd = hwnd.unwrap();
     unsafe { SetForegroundWindow(hwnd) }
         .ok()
-        .map_err(|e| anyhow!("Fail to set window to foreground, {:?}", e))?;
+        .map_err(|e| anyhow!("Fail to set window to foreground, {}", e))?;
     Ok(true)
 }
 

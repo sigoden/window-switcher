@@ -1,3 +1,54 @@
+#include "winres.h"
+
+
+/////////////////////////////////////////////////////////////////////////////
+// English (United States) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_ENU)
+LANGUAGE LANG_ENGLISH, SUBLANG_ENGLISH_US
+#pragma code_page(1252)
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 0,1,0,0
+ // PRODUCTVERSION 0,0,0,0
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x40004L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040004b0"
+        BEGIN
+            // VALUE "CompanyName", "TODO: <Company name>"
+            VALUE "FileDescription", "Windows Switcher"
+            // VALUE "FileVersion", "0.0.0.0"
+            VALUE "InternalName", "windows-switcher.exe"
+            VALUE "LegalCopyright", "Copyright (C) 2022"
+            VALUE "OriginalFilename", "windows-switcher.exe"
+            VALUE "ProductName", "Windows Switcher"
+            VALUE "ProductVersion", "0.1.0.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x400, 1200
+    END
+END
+
+#endif    // English (United States) resources
+/////////////////////////////////////////////////////////////////////////////
+
 #define IDI_ICON 0x101
 
 IDI_ICON ICON "icon.ico"
@@ -5,4 +56,4 @@ IDI_ICON ICON "icon.ico"
 #define RT_MANIFEST 24
 #define APP_MANIFEST 1
 
-APP_MANIFEST RT_MANIFEST app.manifest
+// APP_MANIFEST RT_MANIFEST app.manifest

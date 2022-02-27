@@ -75,13 +75,13 @@ jobs:
         bin=${GITHUB_REPOSITORY##*/}
         src=`pwd`
         dist=$src/dist
-        name=$bin
+        name=$bin-$version
         executable=target/$target/release/$bin.exe
 
         if [[ "$target" == "i686-pc-windows-msvc" ]]; then
-          name=$name-32
+          name=$name-x32
         else
-          name=$name-64
+          name=$name-x64
         fi
 
         mkdir $dist

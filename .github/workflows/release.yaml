@@ -13,8 +13,11 @@ jobs:
       matrix:
         target:
         - x86_64-pc-windows-msvc
+        - i686-pc-windows-msvc
         include:
         - target: x86_64-pc-windows-msvc
+          os: windows-2016
+        - target: i686-pc-windows-msvc
           os: windows-2016
 
     runs-on: ${{matrix.os}}
@@ -72,11 +75,13 @@ jobs:
         bin=${GITHUB_REPOSITORY##*/}
         src=`pwd`
         dist=$src/dist
-        name=$bin-$version
-        executable=target/$target/release/$bin
+        name=$bin
+        executable=target/$target/release/$bin.exe
 
-        if [[ "$RUNNER_OS" == "Windows" ]]; then
-          executable=$executable.exe
+        if [[ "$target" == "i686-pc-windows-msvc" ]]; then
+          name=$name-32
+        else
+          name=$name-64
         fi
 
         mkdir $dist

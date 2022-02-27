@@ -12,7 +12,7 @@ use windows::Win32::{
 };
 
 const HKEY_RUN: &[wchar_t] = wchz!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
-const HKEY_NAME: &[wchar_t] = wchz!("WindowsSwitcher");
+const HKEY_NAME: &[wchar_t] = wchz!("Windows Switcher");
 
 #[derive(Default)]
 pub struct Startup {

@@ -12,9 +12,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, PostQuitMessage,
-    RegisterClassW, TranslateMessage, CREATESTRUCTW, CW_USEDEFAULT, GWL_USERDATA, MSG,
-    WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY, WM_LBUTTONUP, WM_RBUTTONUP,
-    WM_USER, WNDCLASSW,
+    RegisterClassW, RegisterWindowMessageW, TranslateMessage, CREATESTRUCTW, CW_USEDEFAULT,
+    GWL_USERDATA, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY,
+    WM_LBUTTONUP, WM_RBUTTONUP, WM_USER, WNDCLASSW,
 };
 
 pub const WM_USER_TRAYICON: u32 = WM_USER + 1;
@@ -34,6 +34,7 @@ pub struct App {
     trayicon: TrayIcon,
     startup: Startup,
     hwnd: HWND,
+    msg_cb: Option<u32>,
 }
 
 impl App {
@@ -64,6 +65,7 @@ impl App {
             trayicon,
             startup,
             hwnd: HWND::default(),
+            msg_cb: None,
         };
 
         let ptr = Box::into_raw(Box::new(app));
@@ -126,6 +128,11 @@ impl App {
                 set_window_ptr(hwnd, app);
                 app.hwnd = hwnd;
                 app.trayicon.add(hwnd)?;
+                app.msg_cb = {
+                    Some(RegisterWindowMessageW(PWSTR(
+                        wchz!("TaskbarCreated").as_ptr(),
+                    )))
+                };
             },
             WM_HOTKEY => {
                 log_info!("Handle msg=WM_NOTIFY");
@@ -159,7 +166,15 @@ impl App {
                     }
                 }
             }
-            _ => {}
+            _ => {
+                if let Ok(app) = retrive_app(hwnd) {
+                    if let Some(msg_id) = app.msg_cb {
+                        if msg == msg_id {
+                            app.trayicon.add(hwnd)?;
+                        }
+                    }
+                }
+            }
         }
         Ok(unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) })
     }

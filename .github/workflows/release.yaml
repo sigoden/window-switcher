@@ -13,8 +13,11 @@ jobs:
       matrix:
         target:
         - x86_64-pc-windows-msvc
+        - i686-pc-windows-msvc
         include:
         - target: x86_64-pc-windows-msvc
+          os: windows-2016
+        - target: i686-pc-windows-msvc
           os: windows-2016
 
     runs-on: ${{matrix.os}}
@@ -73,10 +76,12 @@ jobs:
         src=`pwd`
         dist=$src/dist
         name=$bin-$version
-        executable=target/$target/release/$bin
+        executable=target/$target/release/$bin.exe
 
-        if [[ "$RUNNER_OS" == "Windows" ]]; then
-          executable=$executable.exe
+        if [[ "$target" == "i686-pc-windows-msvc" ]]; then
+          name=$name-x32
+        else
+          name=$name-x64
         fi
 
         mkdir $dist

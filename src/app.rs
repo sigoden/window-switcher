@@ -11,10 +11,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     RegisterHotKey, HOT_KEY_MODIFIERS, MOD_ALT, MOD_NOREPEAT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowLongPtrW,
-    PostQuitMessage, RegisterClassW, SetWindowLongPtrW, TranslateMessage, CREATESTRUCTW,
-    CW_USEDEFAULT, GWL_USERDATA, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE,
-    WM_HOTKEY, WM_LBUTTONUP, WM_RBUTTONUP, WM_USER, WNDCLASSW,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, PostQuitMessage,
+    RegisterClassW, TranslateMessage, CREATESTRUCTW, CW_USEDEFAULT, GWL_USERDATA, MSG,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY, WM_LBUTTONUP, WM_RBUTTONUP,
+    WM_USER, WNDCLASSW,
 };
 
 pub const WM_USER_TRAYICON: u32 = WM_USER + 1;
@@ -123,7 +123,7 @@ impl App {
                 log_info!("Handle msg=WM_CREATE");
                 let create_struct: &mut CREATESTRUCTW = &mut *(lparam.0 as *mut _);
                 let app: &mut App = &mut *(create_struct.lpCreateParams as *mut _);
-                SetWindowLongPtrW(hwnd, GWL_USERDATA, app as *mut _ as _);
+                set_window_ptr(hwnd, app);
                 app.hwnd = hwnd;
                 app.trayicon.add(hwnd)?;
             },
@@ -167,11 +167,42 @@ impl App {
 
 fn retrive_app(hwnd: HWND) -> Result<&'static mut App> {
     unsafe {
-        let ptr = GetWindowLongPtrW(hwnd, GWL_USERDATA);
+        let ptr = get_window_ptr(hwnd);
         if ptr == 0 {
             bail!("Fail to get app from win ptr");
         }
         let tx: &mut App = &mut *(ptr as *mut _);
         Ok(tx)
     }
+}
+
+#[cfg(target_arch = "x86")]
+fn get_window_ptr(hwnd: HWND) -> i32 {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowLongW(hwnd, GWL_USERDATA) }
+}
+#[cfg(target_arch = "x86_64")]
+fn get_window_ptr(hwnd: HWND) -> isize {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWL_USERDATA) }
+}
+
+#[cfg(target_arch = "x86")]
+fn set_window_ptr(hwnd: HWND, app: &mut App) {
+    unsafe {
+        windows::Win32::UI::WindowsAndMessaging::SetWindowLongW(
+            hwnd,
+            GWL_USERDATA,
+            app as *mut _ as _,
+        )
+    };
+}
+
+#[cfg(target_arch = "x86_64")]
+fn set_window_ptr(hwnd: HWND, app: &mut App) {
+    unsafe {
+        windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(
+            hwnd,
+            GWL_USERDATA,
+            app as *mut _ as _,
+        )
+    };
 }

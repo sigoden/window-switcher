@@ -94,10 +94,18 @@ impl App {
             .map_err(|e| anyhow!("Fail to register hotkey, {}", e))?;
 
         let mut message = MSG::default();
-        unsafe {
-            while GetMessageW(&mut message, HWND(0), 0, 0).into() {
-                TranslateMessage(&message);
-                DispatchMessageW(&message);
+        loop {
+            let ret = unsafe { GetMessageW(&mut message, HWND(0), 0, 0) };
+            let code = ret.0;
+            match code {
+                0 => break,
+                -1 => {
+                    log_error!("Fail to get message, {}", Win32Error::from_win32());
+                }
+                _ => unsafe {
+                    TranslateMessage(&message);
+                    DispatchMessageW(&message);
+                },
             }
         }
 

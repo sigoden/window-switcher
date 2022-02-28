@@ -1,14 +1,10 @@
 use anyhow::{bail, Result};
 use wchar::{wchar_t, wchz};
-use windows::Win32::{
-    Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, MAX_PATH, PWSTR},
-    System::{
-        LibraryLoader::GetModuleFileNameW,
-        Registry::{
-            RegCloseKey, RegDeleteValueW, RegGetValueW, RegOpenKeyExW, RegSetValueExW, HKEY,
-            HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_SZ, RRF_RT_REG_SZ,
-        },
-    },
+use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, MAX_PATH, PWSTR};
+use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
+use windows::Win32::System::Registry::{
+    RegCloseKey, RegDeleteValueW, RegGetValueW, RegOpenKeyExW, RegSetValueExW, HKEY,
+    HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_SZ, RRF_RT_REG_SZ,
 };
 
 const HKEY_RUN: &[wchar_t] = wchz!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");

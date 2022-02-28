@@ -11,12 +11,11 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconFromResourceEx, CreatePopupMenu, DestroyMenu, GetCursorPos,
     LookupIconIdFromDirectoryEx, SetForegroundWindow, TrackPopupMenu, HICON, HMENU,
-    LR_DEFAULTCOLOR, MF_STRING, TRACK_POPUP_MENU_FLAGS,
+    LR_DEFAULTCOLOR, MF_CHECKED, MF_STRING, MF_UNCHECKED, TPM_BOTTOMALIGN, TPM_LEFTALIGN,
 };
 
 const TRAYICON_ICON_BUFFER: &[u8] = include_bytes!("../assets/icon.ico");
-const TEXT_STARTUP_ON: &[wchar_t] = wchz!("Startup: On");
-const TEXT_STARTUP_OFF: &[wchar_t] = wchz!("Startup: Off");
+const TEXT_STARTUP: &[wchar_t] = wchz!("Startup");
 const TEXT_EXIT: &[wchar_t] = wchz!("Exit");
 
 pub struct TrayIcon {
@@ -50,7 +49,7 @@ impl TrayIcon {
 
             TrackPopupMenu(
                 menu.hmenu,
-                TRACK_POPUP_MENU_FLAGS::default(),
+                TPM_LEFTALIGN | TPM_BOTTOMALIGN,
                 point.x,
                 point.y,
                 0,
@@ -80,17 +79,14 @@ impl TrayIcon {
         data
     }
     fn create_menu(&mut self, startup: bool) -> Win32Result<WrapHMenu> {
-        let text_startup = match startup {
-            true => TEXT_STARTUP_ON,
-            false => TEXT_STARTUP_OFF,
-        };
+        let startup_flags = if startup { MF_CHECKED } else { MF_UNCHECKED };
         unsafe {
             let hmenu = CreatePopupMenu();
             AppendMenuW(
                 hmenu,
-                MF_STRING,
+                startup_flags,
                 MENU_CMD_STARTUP as usize,
-                PWSTR(text_startup.as_ptr()),
+                PWSTR(TEXT_STARTUP.as_ptr()),
             )
             .ok()?;
             AppendMenuW(

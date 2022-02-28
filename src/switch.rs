@@ -4,16 +4,15 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     sync::Mutex,
 };
-use windows::{
-    Win32::Foundation::{BOOL, HWND, LPARAM, PWSTR},
-    Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
-        PROCESS_VM_READ,
-    },
-    Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetForegroundWindow, GetWindowTextW, GetWindowThreadProcessId,
-        IsWindowVisible, SetForegroundWindow,
-    },
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, PWSTR};
+use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
+    PROCESS_VM_READ,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetForegroundWindow, GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId,
+    IsWindowVisible, SetForegroundWindow, ShowWindow, SHOW_WINDOW_CMD, SW_RESTORE,
+    SW_SHOWMINIMIZED, WINDOWPLACEMENT,
 };
 
 lazy_static! {
@@ -26,11 +25,15 @@ pub fn switch_next_window() -> Result<bool> {
         .map_err(|_| anyhow!("Fail to unlock ALL_WINDOWS"))?
         .clear();
     enum_windows()?;
-    let hwnd = get_next_window();
-    if hwnd.is_none() {
-        return Ok(false);
+    let hwnd = match get_next_window() {
+        None => return Ok(false),
+        Some(v) => v,
+    };
+    if get_window_placement(hwnd) == SW_SHOWMINIMIZED {
+        unsafe { ShowWindow(hwnd, SW_RESTORE) }
+            .ok()
+            .map_err(|e| anyhow!("Fail to show window, {}", e))?;
     }
-    let hwnd = hwnd.unwrap();
     unsafe { SetForegroundWindow(hwnd) }
         .ok()
         .map_err(|e| anyhow!("Fail to set window to foreground, {}", e))?;
@@ -59,7 +62,7 @@ extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
     if &title == "Program Manager" && module_path.contains("explorer.exe") {
         return ok;
     }
-    // log_info!("{:?} {} {} {}", hwnd, pid, &title, &module_path);
+    log_info!("{:?} {} {} {}", hwnd, pid, &title, &module_path);
     if let Ok(mut all_windows) = ALL_WINDOWS.lock() {
         all_windows.entry(module_path).or_default().insert(hwnd.0);
         ok
@@ -106,6 +109,12 @@ fn get_window_pid(hwnd: HWND) -> u32 {
 fn is_window_visible(hwnd: HWND) -> bool {
     let ret = unsafe { IsWindowVisible(hwnd) };
     ret.as_bool()
+}
+
+fn get_window_placement(hwnd: HWND) -> SHOW_WINDOW_CMD {
+    let mut placement = WINDOWPLACEMENT::default();
+    unsafe { GetWindowPlacement(hwnd, &mut placement) };
+    placement.showCmd
 }
 
 fn get_window_title(hwnd: HWND) -> String {

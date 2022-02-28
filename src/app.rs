@@ -96,8 +96,7 @@ impl App {
         let mut message = MSG::default();
         loop {
             let ret = unsafe { GetMessageW(&mut message, HWND(0), 0, 0) };
-            let code = ret.0;
-            match code {
+            match ret.0 {
                 0 => break,
                 -1 => {
                     log_error!("Fail to get message, {}", Win32Error::from_win32());

@@ -92,20 +92,11 @@ jobs:
         7z a $archive *
         echo "::set-output name=archive::`pwd -W`/$name.zip"
 
-    - name: Build Changelog
-      id: build-changelog
-      uses: ardalanamini/auto-changelog@v1
-      if: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
-      with:
-        token: ${{ secrets.GITHUB_TOKEN }}
-        exclude: 'build,ci'
-
     - name: Publish Archive
       uses: softprops/action-gh-release@v0.1.5
       if: ${{ startsWith(github.ref, 'refs/tags/') }}
       with:
         draft: false
-        body: ${{steps.build-changelog.outputs.changelog}}
         files: ${{ steps.package.outputs.archive }}
         prerelease: ${{ steps.check-tag.outputs.rc == 'true' }}
       env:

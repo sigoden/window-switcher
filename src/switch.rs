@@ -1,9 +1,6 @@
-use crate::log_info;
+use crate::{log_info, virtual_desktop::VirtualDesktop};
 use anyhow::{anyhow, Result};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    sync::Mutex,
-};
+use std::collections::{BTreeMap, BTreeSet};
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, PWSTR};
 use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
@@ -15,17 +12,21 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SW_SHOWMINIMIZED, WINDOWPLACEMENT,
 };
 
-lazy_static! {
-    static ref ALL_WINDOWS: Mutex<BTreeMap<String, BTreeSet<isize>>> = Mutex::new(BTreeMap::new());
+struct State {
+    windows: BTreeMap<String, BTreeSet<isize>>,
+    vitual_deskop: VirtualDesktop,
 }
 
-pub fn switch_next_window() -> Result<bool> {
-    ALL_WINDOWS
-        .lock()
-        .map_err(|_| anyhow!("Fail to unlock ALL_WINDOWS"))?
-        .clear();
-    enum_windows()?;
-    let hwnd = match get_next_window() {
+pub fn switch_next_window(virtual_deskop: &VirtualDesktop) -> Result<bool> {
+    let mut state = State {
+        windows: BTreeMap::default(),
+        vitual_deskop: virtual_deskop.clone(),
+    };
+
+    unsafe { EnumWindows(Some(enum_window), LPARAM(&mut state as *mut _ as isize)).ok() }
+        .map_err(|e| anyhow!("Fail to enum windows {}", e))?;
+
+    let hwnd = match get_next_window(&state) {
         None => return Ok(false),
         Some(v) => v,
     };
@@ -40,13 +41,19 @@ pub fn switch_next_window() -> Result<bool> {
     Ok(true)
 }
 
-fn enum_windows() -> Result<()> {
-    unsafe { EnumWindows(Some(enum_window), LPARAM(0)).ok() }
-        .map_err(|e| anyhow!("Fail to enum windows {}", e))
-}
+extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let state: &mut State = unsafe { &mut *(lparam.0 as *mut State) };
 
-extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
     let ok: BOOL = true.into();
+
+    if !state
+        .vitual_deskop
+        .is_window_on_current_virtual_desktop(hwnd)
+        .unwrap_or_default()
+    {
+        return ok;
+    }
+
     if !is_window_visible(hwnd) {
         return ok;
     }
@@ -63,15 +70,11 @@ extern "system" fn enum_window(hwnd: HWND, _: LPARAM) -> BOOL {
         return ok;
     }
     log_info!("{:?} {} {} {}", hwnd, pid, &title, &module_path);
-    if let Ok(mut all_windows) = ALL_WINDOWS.lock() {
-        all_windows.entry(module_path).or_default().insert(hwnd.0);
-        ok
-    } else {
-        false.into()
-    }
+    state.windows.entry(module_path).or_default().insert(hwnd.0);
+    true.into()
 }
 
-fn get_next_window() -> Option<HWND> {
+fn get_next_window(state: &State) -> Option<HWND> {
     let (hwnd, pid) = unsafe {
         let hwnd = GetForegroundWindow();
         let pid = get_window_pid(hwnd);
@@ -81,8 +84,7 @@ fn get_next_window() -> Option<HWND> {
     if module_path.is_empty() {
         return None;
     }
-    let all_windows = ALL_WINDOWS.lock().ok()?;
-    match all_windows.get(&module_path) {
+    match state.windows.get(&module_path) {
         None => None,
         Some(windows) => {
             log_info!("Switch windows {:?}", windows);

@@ -1,6 +1,7 @@
 use crate::startup::Startup;
 use crate::switch::switch_next_window;
 use crate::trayicon::TrayIcon;
+use crate::virtual_desktop::{Com, VirtualDesktop};
 use crate::{log_error, log_info, Win32Error};
 
 use anyhow::{anyhow, bail, Result};
@@ -35,10 +36,15 @@ pub struct App {
     startup: Startup,
     hwnd: HWND,
     msg_cb: Option<u32>,
+    _com: Com,
+    virtual_desktop: VirtualDesktop,
 }
 
 impl App {
     pub fn start() -> Result<()> {
+        let _com = Com::create()?;
+        let virtual_desktop = VirtualDesktop::create()?;
+
         let instance = unsafe { GetModuleHandleW(None) }
             .ok()
             .map_err(|e| anyhow!("Fail to get module handle, {}", e))?;
@@ -66,6 +72,8 @@ impl App {
             startup,
             hwnd: HWND::default(),
             msg_cb: None,
+            _com,
+            virtual_desktop,
         };
 
         let ptr = Box::into_raw(Box::new(app));
@@ -143,7 +151,8 @@ impl App {
             },
             WM_HOTKEY => {
                 log_info!("Handle msg=WM_NOTIFY");
-                switch_next_window()?;
+                let app = retrive_app(hwnd)?;
+                switch_next_window(&app.virtual_desktop)?;
             }
             WM_USER_TRAYICON => {
                 let app = retrive_app(hwnd)?;

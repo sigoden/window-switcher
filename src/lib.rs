@@ -1,10 +1,8 @@
-#[macro_use]
-extern crate lazy_static;
-
 mod app;
 mod startup;
 mod switch;
 mod trayicon;
+mod virtual_desktop;
 #[macro_use]
 mod macros;
 

@@ -1,8 +1,7 @@
 mod app;
 mod startup;
-mod switch;
+mod switcher;
 mod trayicon;
-mod virtual_desktop;
 #[macro_use]
 mod macros;
 

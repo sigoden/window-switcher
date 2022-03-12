@@ -1,12 +1,13 @@
 use crate::startup::Startup;
-use crate::switch::switch_next_window;
+use crate::switcher::{Switcher, VirtualDesktop};
 use crate::trayicon::TrayIcon;
-use crate::virtual_desktop::{Com, VirtualDesktop};
 use crate::{log_error, log_info, Win32Error};
 
 use anyhow::{anyhow, bail, Result};
+use std::ptr::null_mut;
 use wchar::{wchar_t, wchz};
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, PWSTR, WPARAM};
+use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, WPARAM};
+use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     RegisterHotKey, HOT_KEY_MODIFIERS, MOD_ALT, MOD_NOREPEAT,
@@ -21,7 +22,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub const WM_USER_TRAYICON: u32 = WM_USER + 1;
 pub const MENU_CMD_EXIT: u32 = 1;
 pub const MENU_CMD_STARTUP: u32 = 2;
-pub const HOTKEY: (HOT_KEY_MODIFIERS, u32) = (MOD_ALT, 0xC0);
+pub const HOTKEY: (HOT_KEY_MODIFIERS, u32) = (MOD_ALT, 0xC0); // alt + `
 
 pub const NAME: &[wchar_t] = wchz!("Windows Switcher");
 
@@ -36,23 +37,64 @@ pub struct App {
     startup: Startup,
     hwnd: HWND,
     msg_cb: Option<u32>,
-    _com: Com,
-    virtual_desktop: VirtualDesktop,
+    has_com: bool,
+    switcher: Switcher,
 }
 
 impl App {
     pub fn start() -> Result<()> {
-        let _com = Com::create()?;
-        let virtual_desktop = VirtualDesktop::create()?;
-
-        let instance = unsafe { GetModuleHandleW(None) }
-            .ok()
-            .map_err(|e| anyhow!("Fail to get module handle, {}", e))?;
-
-        debug_assert!(instance.0 != 0);
+        let has_com = match Self::init_com() {
+            Ok(_) => true,
+            Err(err) => {
+                log_error!(err.to_string());
+                false
+            }
+        };
+        let virtual_desktop = match VirtualDesktop::create() {
+            Ok(v) => Some(v),
+            Err(err) => {
+                log_error!(err.to_string());
+                None
+            }
+        };
+        let instance = Self::get_instance()?;
 
         let name = PWSTR(NAME.as_ptr());
 
+        Self::register_window_class(instance, name)?;
+
+        let trayicon = TrayIcon::create();
+        let startup = Startup::create()?;
+        let switcher = Switcher::new(virtual_desktop);
+
+        let app = App {
+            trayicon,
+            startup,
+            hwnd: HWND::default(),
+            msg_cb: None,
+            has_com,
+            switcher,
+        };
+        let hwnd = Self::create_window(instance, name, app)?;
+
+        Self::regist_hotkey(hwnd)?;
+        Self::eventloop()
+    }
+
+    fn init_com() -> Result<()> {
+        unsafe { CoInitialize(null_mut()).map_err(|e| anyhow!("Fail to init com, {}", e)) }
+    }
+
+    fn get_instance() -> Result<HINSTANCE> {
+        let instance = unsafe { GetModuleHandleW(None) }
+            .ok()
+            .map_err(|e| anyhow!("Fail to get instance, {}", e))?;
+
+        debug_assert!(instance.0 != 0);
+        Ok(instance)
+    }
+
+    fn register_window_class(instance: HINSTANCE, name: PWSTR) -> Result<()> {
         let class = WNDCLASSW {
             hInstance: instance,
             lpszClassName: name,
@@ -63,22 +105,12 @@ impl App {
         if atom == 0 {
             bail!("Fail to register class, {}", Win32Error::from_win32());
         }
+        Ok(())
+    }
 
-        let trayicon = TrayIcon::create();
-        let startup = Startup::create()?;
-
-        let app = App {
-            trayicon,
-            startup,
-            hwnd: HWND::default(),
-            msg_cb: None,
-            _com,
-            virtual_desktop,
-        };
-
+    fn create_window(instance: HINSTANCE, name: PWSTR, app: App) -> Result<HWND> {
         let ptr = Box::into_raw(Box::new(app));
-
-        let hwnd = unsafe {
+        unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE(0),
                 name,
@@ -95,12 +127,16 @@ impl App {
             )
         }
         .ok()
-        .map_err(|e| anyhow!("Fail to create window, {}", e))?;
+        .map_err(|e| anyhow!("Fail to create window, {}", e))
+    }
 
+    fn regist_hotkey(hwnd: HWND) -> Result<()> {
         unsafe { RegisterHotKey(hwnd, 1, HOTKEY.0 | MOD_NOREPEAT, HOTKEY.1) }
             .ok()
-            .map_err(|e| anyhow!("Fail to register hotkey, {}", e))?;
+            .map_err(|e| anyhow!("Fail to register hotkey, {}", e))
+    }
 
+    fn eventloop() -> Result<()> {
         let mut message = MSG::default();
         loop {
             let ret = unsafe { GetMessageW(&mut message, HWND(0), 0, 0) };
@@ -152,7 +188,7 @@ impl App {
             WM_HOTKEY => {
                 log_info!("Handle msg=WM_NOTIFY");
                 let app = retrive_app(hwnd)?;
-                switch_next_window(&app.virtual_desktop)?;
+                app.switcher.switch_window()?;
             }
             WM_USER_TRAYICON => {
                 let app = retrive_app(hwnd)?;
@@ -193,6 +229,14 @@ impl App {
             }
         }
         Ok(unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) })
+    }
+}
+
+impl Drop for App {
+    fn drop(&mut self) {
+        if self.has_com {
+            unsafe { CoUninitialize() }
+        }
     }
 }
 

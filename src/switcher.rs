@@ -1,7 +1,8 @@
 use crate::{log_error, log_info};
 use anyhow::{anyhow, Result};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::HashMap;
 use std::ops::Deref;
+use std::time::{Duration, Instant};
 use windows::core::GUID;
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, PWSTR};
 use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
@@ -15,33 +16,60 @@ use windows::Win32::UI::WindowsAndMessaging::{
     IsWindowVisible, SetForegroundWindow, ShowWindow, SHOW_WINDOW_CMD, SW_RESTORE,
     SW_SHOWMINIMIZED, WINDOWPLACEMENT,
 };
+
+const LONG_INTERVAL: Duration = Duration::from_secs(3);
 #[allow(non_upper_case_globals)]
 const CLSID_VirtualDesktopManager: GUID = GUID::from_u128(0xaa509086_5ca9_4c25_8f95_589d3c07b48a);
 
 pub struct Switcher {
-    windows: BTreeMap<String, BTreeSet<isize>>,
+    windows: HashMap<String, Vec<isize>>,
     virtual_desktop: Option<VirtualDesktop>,
+    last_switch_info: Option<SwitchInfo>,
 }
 
 impl Switcher {
     pub fn new(virtual_desktop: Option<VirtualDesktop>) -> Self {
         Self {
-            windows: BTreeMap::new(),
+            windows: HashMap::new(),
             virtual_desktop,
+            last_switch_info: None,
         }
     }
 
     pub fn switch_window(&mut self) -> Result<bool> {
         self.enum_windows()?;
 
-        let hwnd = match self.select_window() {
-            Some(v) => v,
+        let current_window = unsafe { GetForegroundWindow() };
+        let pid = get_window_pid(current_window);
+        let module_path = get_module_path(pid);
+        if module_path.is_empty() {
+            return Ok(false);
+        }
+        let (index, hwnd) = match self.windows.get(&module_path) {
             None => return Ok(false),
+            Some(windows) => {
+                log_info!("available switch windows {:?}", windows);
+                let len = windows.len();
+                if len == 1 {
+                    return Ok(false);
+                }
+                let mut index = 1;
+                if let Some(info) = self.last_switch_info.as_ref() {
+                    log_info!("last switch info {:?}", info);
+                    if info.path == module_path && info.at.elapsed() < LONG_INTERVAL {
+                        index = (info.index + 1).min(windows.len() - 1);
+                    }
+                }
+                (index, HWND(windows[index]))
+            }
         };
 
+        log_info!("switch to {:?} at {}", hwnd, index);
         self.switch_to(hwnd)?;
 
         self.windows.clear();
+
+        self.last_switch_info = Some(SwitchInfo::new(&module_path, index));
 
         Ok(true)
     }
@@ -49,11 +77,6 @@ impl Switcher {
     fn enum_windows(&mut self) -> Result<()> {
         unsafe { EnumWindows(Some(enum_window), LPARAM(self as *mut _ as isize)).ok() }
             .map_err(|e| anyhow!("Fail to enum windows {}", e))
-    }
-
-    fn select_window(&self) -> Option<HWND> {
-        let current_window = unsafe { GetForegroundWindow() };
-        self.get_next_window(current_window)
     }
 
     fn switch_to(&self, hwnd: HWND) -> Result<()> {
@@ -65,30 +88,6 @@ impl Switcher {
         unsafe { SetForegroundWindow(hwnd) }
             .ok()
             .map_err(|e| anyhow!("Fail to set window to foreground, {}", e))
-    }
-
-    fn get_next_window(&self, current_window: HWND) -> Option<HWND> {
-        let pid = get_window_pid(current_window);
-        let module_path = get_module_path(pid);
-        if module_path.is_empty() {
-            return None;
-        }
-        match self.windows.get(&module_path) {
-            None => None,
-            Some(windows) => {
-                log_info!("Switch windows {:?}", windows);
-                let len = windows.len();
-                if len == 1 {
-                    return None;
-                }
-                let values: Vec<isize> = windows.iter().cloned().collect();
-                let index = windows.iter().position(|v| *v == current_window.0)?;
-                let new_index = (index + 1) % len;
-                let new_hwnd = HWND(values[new_index]);
-                log_info!("switch to {} {:?}", new_index, new_hwnd);
-                Some(new_hwnd)
-            }
-        }
     }
 
     fn is_window_on_desktop(&self, hwnd: HWND) -> bool {
@@ -105,6 +104,23 @@ impl Switcher {
             }
         }
         true
+    }
+}
+
+#[derive(Debug)]
+struct SwitchInfo {
+    at: Instant,
+    path: String,
+    index: usize,
+}
+
+impl SwitchInfo {
+    fn new(path: &str, index: usize) -> Self {
+        Self {
+            at: Instant::now(),
+            path: path.to_string(),
+            index,
+        }
     }
 }
 
@@ -168,7 +184,7 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
         .windows
         .entry(module_path)
         .or_default()
-        .insert(hwnd.0);
+        .push(hwnd.0);
 
     true.into()
 }

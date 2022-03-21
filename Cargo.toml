@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
+rust-ini = "0.18.0"
 wchar = "0.11"
 
 [dependencies.windows]

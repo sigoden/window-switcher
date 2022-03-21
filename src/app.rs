@@ -1,7 +1,7 @@
 use crate::startup::Startup;
 use crate::switcher::{Switcher, VirtualDesktop};
 use crate::trayicon::TrayIcon;
-use crate::{log_error, log_info, Win32Error};
+use crate::{log_error, log_info, Config, Win32Error};
 
 use anyhow::{anyhow, bail, Result};
 use std::ptr::null_mut;
@@ -9,9 +9,7 @@ use wchar::{wchar_t, wchz};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, WPARAM};
 use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    RegisterHotKey, HOT_KEY_MODIFIERS, MOD_ALT, MOD_NOREPEAT,
-};
+use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, MOD_NOREPEAT};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, PostQuitMessage,
     RegisterClassW, RegisterWindowMessageW, TranslateMessage, CREATESTRUCTW, CW_USEDEFAULT,
@@ -22,18 +20,17 @@ use windows::Win32::UI::WindowsAndMessaging::{
 pub const WM_USER_TRAYICON: u32 = WM_USER + 1;
 pub const MENU_CMD_EXIT: u32 = 1;
 pub const MENU_CMD_STARTUP: u32 = 2;
-pub const HOTKEY: (HOT_KEY_MODIFIERS, u32) = (MOD_ALT, 0xC0); // alt + `
 
 pub const NAME: &[wchar_t] = wchz!("Windows Switcher");
 
-pub fn start_app() {
-    if let Err(err) = App::start() {
+pub fn start_app(config: &Config) {
+    if let Err(err) = App::start(config) {
         log_error!(&err.to_string());
     }
 }
 
 pub struct App {
-    trayicon: TrayIcon,
+    trayicon: Option<TrayIcon>,
     startup: Startup,
     hwnd: HWND,
     msg_cb: Option<u32>,
@@ -42,7 +39,7 @@ pub struct App {
 }
 
 impl App {
-    pub fn start() -> Result<()> {
+    pub fn start(config: &Config) -> Result<()> {
         let has_com = match Self::init_com() {
             Ok(_) => true,
             Err(err) => {
@@ -63,7 +60,10 @@ impl App {
 
         Self::register_window_class(instance, name)?;
 
-        let trayicon = TrayIcon::create();
+        let trayicon = match config.trayicon {
+            true => Some(TrayIcon::create()),
+            false => None,
+        };
         let startup = Startup::create()?;
         let switcher = Switcher::new(virtual_desktop);
 
@@ -77,7 +77,7 @@ impl App {
         };
         let hwnd = Self::create_window(instance, name, app)?;
 
-        Self::regist_hotkey(hwnd)?;
+        Self::regist_hotkey(hwnd, config)?;
         Self::eventloop()
     }
 
@@ -130,8 +130,8 @@ impl App {
         .map_err(|e| anyhow!("Fail to create window, {}", e))
     }
 
-    fn regist_hotkey(hwnd: HWND) -> Result<()> {
-        unsafe { RegisterHotKey(hwnd, 1, HOTKEY.0 | MOD_NOREPEAT, HOTKEY.1) }
+    fn regist_hotkey(hwnd: HWND, config: &Config) -> Result<()> {
+        unsafe { RegisterHotKey(hwnd, 1, config.hotkey.0 | MOD_NOREPEAT, config.hotkey.1) }
             .ok()
             .map_err(|e| anyhow!("Fail to register hotkey, {}", e))
     }
@@ -178,7 +178,9 @@ impl App {
                 let app: &mut App = &mut *(create_struct.lpCreateParams as *mut _);
                 set_window_ptr(hwnd, app);
                 app.hwnd = hwnd;
-                app.trayicon.add(hwnd)?;
+                if let Some(trayicon) = app.trayicon.as_mut() {
+                    trayicon.add(hwnd)?;
+                }
                 app.msg_cb = {
                     Some(RegisterWindowMessageW(PWSTR(
                         wchz!("TaskbarCreated").as_ptr(),
@@ -192,10 +194,12 @@ impl App {
             }
             WM_USER_TRAYICON => {
                 let app = retrive_app(hwnd)?;
-                let keycode = lparam.0 as u32;
-                if keycode == WM_LBUTTONUP || keycode == WM_RBUTTONUP {
-                    log_info!("Handle msg=WM_TAYICON");
-                    app.trayicon.popup(app.startup.is_enable)?;
+                if let Some(trayicon) = app.trayicon.as_mut() {
+                    let keycode = lparam.0 as u32;
+                    if keycode == WM_LBUTTONUP || keycode == WM_RBUTTONUP {
+                        log_info!("Handle msg=WM_TAYICON");
+                        trayicon.popup(app.startup.is_enable)?;
+                    }
                 }
                 return Ok(LRESULT(0));
             }
@@ -222,7 +226,9 @@ impl App {
                 if let Ok(app) = retrive_app(hwnd) {
                     if let Some(msg_id) = app.msg_cb {
                         if msg == msg_id {
-                            app.trayicon.add(hwnd)?;
+                            if let Some(trayicon) = app.trayicon.as_mut() {
+                                trayicon.add(hwnd)?;
+                            }
                         }
                     }
                 }

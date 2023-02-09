@@ -3,49 +3,57 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VK_MENU, VK_SHIFT,
 };
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Config {
     pub trayicon: bool,
-    pub hotkey: (HOT_KEY_MODIFIERS, u32, VIRTUAL_KEY),
+    pub hotkey: HotKeyConfig,
 }
 
-impl Default for Config {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HotKeyConfig {
+    pub modifier: HOT_KEY_MODIFIERS,
+    pub code: u32,
+    pub vk: VIRTUAL_KEY,
+}
+
+impl Default for HotKeyConfig {
     fn default() -> Self {
-        Self {
-            trayicon: true,
-            hotkey: (MOD_ALT, 0xC0, VK_MENU),
-        }
+        Self::new(MOD_ALT, 0xC0, VK_MENU)
     }
 }
 
-impl Config {
-    pub fn to_hotkey(value: &str) -> Option<(HOT_KEY_MODIFIERS, u32, VIRTUAL_KEY)> {
+impl HotKeyConfig {
+    pub fn new(modifier: HOT_KEY_MODIFIERS, code: u32, vk: VIRTUAL_KEY) -> Self {
+        Self { modifier, code, vk }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
         let value = value.to_ascii_lowercase().replace(' ', "");
-        let mut modifer: HOT_KEY_MODIFIERS = Default::default();
+        let mut modifier: HOT_KEY_MODIFIERS = Default::default();
         let mut code = 0;
         let mut vk: VIRTUAL_KEY = Default::default();
         for (i, v) in value.split('+').enumerate() {
             match v {
                 "win" => {
-                    modifer |= MOD_WIN;
+                    modifier |= MOD_WIN;
                     if i == 0 {
                         vk = VK_LWIN
                     }
                 }
                 "alt" => {
-                    modifer |= MOD_ALT;
+                    modifier |= MOD_ALT;
                     if i == 0 {
                         vk = VK_MENU
                     }
                 }
                 "shift" => {
-                    modifer |= MOD_SHIFT;
+                    modifier |= MOD_SHIFT;
                     if i == 0 {
                         vk = VK_SHIFT
                     }
                 }
                 "ctrl" => {
-                    modifer |= MOD_CONTROL;
+                    modifier |= MOD_CONTROL;
                     if i == 0 {
                         vk = VK_CONTROL
                     }
@@ -147,8 +155,11 @@ impl Config {
                 }
             }
         }
-        Some((modifer, code, vk))
+        Some(Self::new(modifier, code, vk))
     }
+}
+
+impl Config {
     pub fn to_bool(v: &str) -> Option<bool> {
         match v {
             "yes" | "true" | "on" | "1" => Some(true),
@@ -164,10 +175,13 @@ mod tests {
 
     #[test]
     fn test_hotkey() {
-        assert_eq!(Config::to_hotkey("alt + `"), Some((MOD_ALT, 0xc0, VK_MENU)));
         assert_eq!(
-            Config::to_hotkey("ctrl + shift + `"),
-            Some((MOD_CONTROL | MOD_SHIFT, 0xc0, VK_CONTROL))
+            HotKeyConfig::parse("alt + `"),
+            Some(HotKeyConfig::new(MOD_ALT, 0xc0, VK_MENU))
+        );
+        assert_eq!(
+            HotKeyConfig::parse("ctrl + shift + `"),
+            Some(HotKeyConfig::new(MOD_CONTROL | MOD_SHIFT, 0xc0, VK_CONTROL))
         );
     }
 }

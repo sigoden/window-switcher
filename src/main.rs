@@ -1,7 +1,7 @@
 #![windows_subsystem = "windows"]
 
 use ini::Ini;
-use windows_switcher::{start_app, Config};
+use windows_switcher::{start_app, Config, HotKeyConfig};
 
 fn main() {
     let config = load_config().unwrap_or_default();
@@ -21,7 +21,7 @@ fn load_config() -> Option<Config> {
         .unwrap_or(default_config.trayicon);
     let hotkey = sec
         .get("hotkey")
-        .and_then(Config::to_hotkey)
+        .and_then(HotKeyConfig::parse)
         .unwrap_or(default_config.hotkey);
     Some(Config { trayicon, hotkey })
 }

@@ -10,4 +10,4 @@ use windows::core::Error as Win32Error;
 use windows::core::Result as Win32Result;
 
 pub use crate::app::start_app;
-pub use crate::config::Config;
+pub use crate::config::{Config, HotKeyConfig};

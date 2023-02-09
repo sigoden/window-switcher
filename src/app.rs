@@ -84,7 +84,7 @@ impl App {
         };
         let hwnd = Self::create_window(instance, name, app)?;
 
-        let vk = config.hotkey.2;
+        let vk = config.hotkey.vk;
         Self::regist_hotkey(hwnd, config)?;
 
         if vk.ne(&VIRTUAL_KEY::default()) {
@@ -162,9 +162,16 @@ impl App {
     }
 
     fn regist_hotkey(hwnd: HWND, config: &Config) -> Result<()> {
-        unsafe { RegisterHotKey(hwnd, 1, config.hotkey.0 | MOD_NOREPEAT, config.hotkey.1) }
-            .ok()
-            .map_err(|e| anyhow!("Fail to register hotkey, {}", e))
+        unsafe {
+            RegisterHotKey(
+                hwnd,
+                1,
+                config.hotkey.modifier | MOD_NOREPEAT,
+                config.hotkey.code,
+            )
+        }
+        .ok()
+        .map_err(|e| anyhow!("Fail to register hotkey, {}", e))
     }
 
     fn eventloop() -> Result<()> {

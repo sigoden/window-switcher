@@ -95,14 +95,12 @@ impl App {
                     let is_down = unsafe { GetKeyState(vk.0.into()) } < 0;
                     match (is_down_prev, is_down) {
                         (true, false) => {
+                            // alt key release
                             is_down_prev = false;
-                            unsafe { SendMessageW(hwnd, WM_USER_KEY, WPARAM(0), LPARAM(1)) };
-                            // key up
+                            unsafe { SendMessageW(hwnd, WM_USER_KEY, WPARAM(0), LPARAM(0)) };
                         }
                         (false, true) => {
                             is_down_prev = true;
-                            unsafe { SendMessageW(hwnd, WM_USER_KEY, WPARAM(0), LPARAM(0)) };
-                            // key down
                         }
                         _ => {}
                     }
@@ -242,7 +240,7 @@ impl App {
                 }
                 return Ok(LRESULT(0));
             }
-            WM_USER_KEY if lparam.0 == 1 => {
+            WM_USER_KEY => {
                 let app = retrive_app(hwnd)?;
                 app.user_key_up = true;
             }

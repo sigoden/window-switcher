@@ -171,6 +171,7 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     if !is_window_visible(hwnd) {
         return ok;
     }
+
     let title = get_window_title(hwnd);
     if title.is_empty() {
         return ok;

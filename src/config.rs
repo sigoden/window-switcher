@@ -3,10 +3,21 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VK_MENU, VK_SHIFT,
 };
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Config {
     pub trayicon: bool,
     pub hotkey: HotKeyConfig,
+    pub blacklist: String,
+}
+
+impl Config {
+    pub fn to_bool(v: &str) -> Option<bool> {
+        match v {
+            "yes" | "true" | "on" | "1" => Some(true),
+            "no" | "false" | "off" | "0" => Some(false),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,16 +167,6 @@ impl HotKeyConfig {
             }
         }
         Some(Self::new(modifier, code, vk))
-    }
-}
-
-impl Config {
-    pub fn to_bool(v: &str) -> Option<bool> {
-        match v {
-            "yes" | "true" | "on" | "1" => Some(true),
-            "no" | "false" | "off" | "0" => Some(false),
-            _ => None,
-        }
     }
 }
 

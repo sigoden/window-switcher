@@ -7,6 +7,8 @@ on:
 
 jobs:
   all:
+    permissions:
+      contents: write
     name: All
 
     strategy:

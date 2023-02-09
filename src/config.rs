@@ -3,11 +3,21 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VK_MENU, VK_SHIFT,
 };
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Clone)]
 pub struct Config {
     pub trayicon: bool,
     pub hotkey: HotKeyConfig,
     pub blacklist: String,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            trayicon: true,
+            hotkey: Default::default(),
+            blacklist: Default::default(),
+        }
+    }
 }
 
 impl Config {

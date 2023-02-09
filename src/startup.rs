@@ -48,7 +48,7 @@ fn enable() -> Result<()> {
     let path = get_exe_path();
     let ret = unsafe {
         RegSetValueExW(
-            &key.hkey,
+            key.hkey,
             PWSTR(HKEY_NAME.as_ptr()),
             0,
             REG_SZ,
@@ -64,7 +64,7 @@ fn enable() -> Result<()> {
 
 fn disable() -> Result<()> {
     let key = get_key()?;
-    let ret = unsafe { RegDeleteValueW(&key.hkey, PWSTR(HKEY_NAME.as_ptr())) };
+    let ret = unsafe { RegDeleteValueW(key.hkey, PWSTR(HKEY_NAME.as_ptr())) };
     if ret != ERROR_SUCCESS {
         bail!("Fail to delele reg value, {:?}", ret);
     }

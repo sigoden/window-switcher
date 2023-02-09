@@ -5,19 +5,24 @@ use crate::{log_error, log_info, Config, Win32Error};
 
 use anyhow::{anyhow, bail, Result};
 use std::ptr::null_mut;
+use std::thread;
+use std::time::Duration;
 use wchar::{wchar_t, wchz};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, WPARAM};
 use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, MOD_NOREPEAT};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetKeyState, RegisterHotKey, MOD_NOREPEAT, VIRTUAL_KEY,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, PostQuitMessage,
-    RegisterClassW, RegisterWindowMessageW, TranslateMessage, CREATESTRUCTW, CW_USEDEFAULT,
-    GWL_USERDATA, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY,
-    WM_LBUTTONUP, WM_RBUTTONUP, WM_USER, WNDCLASSW,
+    RegisterClassW, RegisterWindowMessageW, SendMessageW, TranslateMessage, CREATESTRUCTW,
+    CW_USEDEFAULT, GWL_USERDATA, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE,
+    WM_HOTKEY, WM_LBUTTONUP, WM_RBUTTONUP, WM_USER, WNDCLASSW,
 };
 
 pub const WM_USER_TRAYICON: u32 = WM_USER + 1;
+pub const WM_USER_KEY: u32 = WM_USER + 2;
 pub const MENU_CMD_EXIT: u32 = 1;
 pub const MENU_CMD_STARTUP: u32 = 2;
 
@@ -35,6 +40,7 @@ pub struct App {
     hwnd: HWND,
     msg_cb: Option<u32>,
     has_com: bool,
+    user_key_up: bool,
     switcher: Switcher,
 }
 
@@ -73,11 +79,36 @@ impl App {
             hwnd: HWND::default(),
             msg_cb: None,
             has_com,
+            user_key_up: false,
             switcher,
         };
         let hwnd = Self::create_window(instance, name, app)?;
 
+        let vk = config.hotkey.2;
         Self::regist_hotkey(hwnd, config)?;
+
+        if vk.ne(&VIRTUAL_KEY::default()) {
+            thread::spawn(move || {
+                let mut is_down_prev = false;
+                loop {
+                    thread::sleep(Duration::from_millis(100));
+                    let is_down = unsafe { GetKeyState(vk.0.into()) } < 0;
+                    match (is_down_prev, is_down) {
+                        (true, false) => {
+                            is_down_prev = false;
+                            unsafe { SendMessageW(hwnd, WM_USER_KEY, WPARAM(0), LPARAM(1)) };
+                            // key up
+                        }
+                        (false, true) => {
+                            is_down_prev = true;
+                            unsafe { SendMessageW(hwnd, WM_USER_KEY, WPARAM(0), LPARAM(0)) };
+                            // key down
+                        }
+                        _ => {}
+                    }
+                }
+            });
+        }
         Self::eventloop()
     }
 
@@ -190,7 +221,8 @@ impl App {
             WM_HOTKEY => {
                 log_info!("Handle msg=WM_NOTIFY");
                 let app = retrive_app(hwnd)?;
-                app.switcher.switch_window()?;
+                app.switcher.switch_window(app.user_key_up)?;
+                app.user_key_up = false;
             }
             WM_USER_TRAYICON => {
                 let app = retrive_app(hwnd)?;
@@ -203,10 +235,14 @@ impl App {
                 }
                 return Ok(LRESULT(0));
             }
+            WM_USER_KEY if lparam.0 == 1 => {
+                let app = retrive_app(hwnd)?;
+                app.user_key_up = true;
+            }
             WM_COMMAND => {
                 let value = wparam.0 as u32;
                 let kind = ((value >> 16) & 0xffff) as u16;
-                let id = (value & 0xffff) as u32;
+                let id = value & 0xffff;
                 if kind == 0 {
                     match id {
                         MENU_CMD_EXIT => {

@@ -2,7 +2,6 @@ use crate::{log_error, log_info};
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
 use std::ops::Deref;
-use std::time::{Duration, Instant};
 use windows::core::GUID;
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, PWSTR};
 use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
@@ -17,14 +16,13 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SW_SHOWMINIMIZED, WINDOWPLACEMENT,
 };
 
-const LONG_INTERVAL: Duration = Duration::from_secs(3);
 #[allow(non_upper_case_globals)]
 const CLSID_VirtualDesktopManager: GUID = GUID::from_u128(0xaa509086_5ca9_4c25_8f95_589d3c07b48a);
 
 pub struct Switcher {
     windows: HashMap<String, Vec<isize>>,
     virtual_desktop: Option<VirtualDesktop>,
-    last_switch_info: Option<SwitchInfo>,
+    state: Option<SwitcherState>,
 }
 
 impl Switcher {
@@ -32,11 +30,11 @@ impl Switcher {
         Self {
             windows: HashMap::new(),
             virtual_desktop,
-            last_switch_info: None,
+            state: None,
         }
     }
 
-    pub fn switch_window(&mut self) -> Result<bool> {
+    pub fn switch_window(&mut self, restore: bool) -> Result<bool> {
         self.enum_windows()?;
 
         let current_window = unsafe { GetForegroundWindow() };
@@ -45,33 +43,52 @@ impl Switcher {
         if module_path.is_empty() {
             return Ok(false);
         }
-        let (index, hwnd) = match self.windows.get(&module_path) {
-            None => return Ok(false),
+        match self.windows.get(&module_path) {
+            None => Ok(false),
             Some(windows) => {
                 log_info!("available switch windows {:?}", windows);
                 let len = windows.len();
                 if len == 1 {
                     return Ok(false);
                 }
+                let current_id = windows[0];
                 let mut index = 1;
-                if let Some(info) = self.last_switch_info.as_ref() {
-                    log_info!("last switch info {:?}", info);
-                    if info.path == module_path && info.at.elapsed() < LONG_INTERVAL {
-                        index = (info.index + 1).min(windows.len() - 1);
+                let mut new_state_id = windows[index];
+                if len > 2 {
+                    if let Some(state) = self.state.as_mut() {
+                        log_info!("last switch info {:?}", state);
+                        if state.path == module_path {
+                            if restore {
+                                if state.id != current_id {
+                                    if let Some((i, _)) =
+                                        windows.iter().enumerate().find(|(_, v)| **v == state.id)
+                                    {
+                                        index = i
+                                    }
+                                }
+                                new_state_id = windows[index]
+                            } else {
+                                index = (state.index + 1).min(windows.len() - 1);
+                                if windows[index] == new_state_id {
+                                    new_state_id = current_id;
+                                }
+                            }
+                        }
                     }
                 }
-                (index, HWND(windows[index]))
+                self.state = Some(SwitcherState {
+                    path: module_path,
+                    index,
+                    id: new_state_id,
+                });
+                let hwnd = HWND(windows[index]);
+                self.switch_to(hwnd)?;
+
+                self.windows.clear();
+
+                Ok(true)
             }
-        };
-
-        log_info!("switch to {:?} at {}", hwnd, index);
-        self.switch_to(hwnd)?;
-
-        self.windows.clear();
-
-        self.last_switch_info = Some(SwitchInfo::new(&module_path, index));
-
-        Ok(true)
+        }
     }
 
     fn enum_windows(&mut self) -> Result<()> {
@@ -108,20 +125,10 @@ impl Switcher {
 }
 
 #[derive(Debug)]
-struct SwitchInfo {
-    at: Instant,
+struct SwitcherState {
     path: String,
+    id: isize,
     index: usize,
-}
-
-impl SwitchInfo {
-    fn new(path: &str, index: usize) -> Self {
-        Self {
-            at: Instant::now(),
-            path: path.to_string(),
-            index,
-        }
-    }
 }
 
 #[derive(Clone)]

@@ -113,7 +113,7 @@ struct WrapHMenu {
 
 impl Drop for WrapHMenu {
     fn drop(&mut self) {
-        unsafe { DestroyMenu(&self.hmenu) };
+        unsafe { DestroyMenu(self.hmenu) };
     }
 }
 

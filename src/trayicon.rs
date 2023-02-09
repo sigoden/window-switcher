@@ -66,17 +66,17 @@ impl TrayIcon {
     }
     fn gen_data() -> NOTIFYICONDATAW {
         let icon = unsafe { convert_icon(TRAYICON_ICON_BUFFER) };
-        let mut data = NOTIFYICONDATAW {
+        let mut sz_tip = [0; 128];
+        sz_tip[..NAME.len()].copy_from_slice(NAME);
+        NOTIFYICONDATAW {
             cbSize: size_of::<NOTIFYICONDATAW>() as u32,
             uID: WM_USER_TRAYICON,
             uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
             uCallbackMessage: WM_USER_TRAYICON,
             hIcon: icon,
+            szTip: sz_tip,
             ..Default::default()
-        };
-        let tip = data.szTip.as_mut();
-        tip[..NAME.len()].copy_from_slice(NAME);
-        data
+        }
     }
     fn create_menu(&mut self, startup: bool) -> Win32Result<WrapHMenu> {
         let startup_flags = if startup { MF_CHECKED } else { MF_UNCHECKED };

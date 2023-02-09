@@ -37,9 +37,8 @@ impl Switcher {
     pub fn switch_window(&mut self, restore: bool) -> Result<bool> {
         self.enum_windows()?;
 
-        let current_window = unsafe { GetForegroundWindow() };
-        let pid = get_window_pid(current_window);
-        let module_path = get_module_path(pid);
+        let current_window = get_foreground_window();
+        let module_path = get_window_module_path(current_window);
         if module_path.is_empty() {
             return Ok(false);
         }
@@ -177,9 +176,7 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
         return ok;
     }
 
-    let pid = get_window_pid(hwnd);
-
-    let module_path = get_module_path(pid);
+    let module_path = get_window_module_path(hwnd);
     if module_path.is_empty() {
         return ok;
     }
@@ -187,7 +184,7 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     if &title == "Program Manager" && module_path.contains("explorer.exe") {
         return ok;
     }
-    log_info!("{:?} {} {} {}", hwnd, pid, &title, &module_path);
+    log_info!("{:?} {} {}", hwnd, &title, &module_path);
     switcher
         .windows
         .entry(module_path)
@@ -197,24 +194,37 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     true.into()
 }
 
-fn get_window_pid(hwnd: HWND) -> u32 {
+pub fn get_window_pid(hwnd: HWND) -> u32 {
     let mut pid: u32 = 0;
     unsafe { GetWindowThreadProcessId(hwnd, &mut pid as *mut u32) };
     pid
 }
 
-fn is_window_visible(hwnd: HWND) -> bool {
+pub fn is_window_visible(hwnd: HWND) -> bool {
     let ret = unsafe { IsWindowVisible(hwnd) };
     ret.as_bool()
 }
 
-fn get_window_placement(hwnd: HWND) -> SHOW_WINDOW_CMD {
+pub fn get_window_placement(hwnd: HWND) -> SHOW_WINDOW_CMD {
     let mut placement = WINDOWPLACEMENT::default();
     unsafe { GetWindowPlacement(hwnd, &mut placement) };
     placement.showCmd
 }
 
-fn get_window_title(hwnd: HWND) -> String {
+pub fn get_window_exe_name(hwnd: HWND) -> Option<String> {
+    let module_path = get_window_module_path(hwnd);
+    module_path.split('\\').last().map(|v| v.to_lowercase())
+}
+
+pub fn get_window_module_path(hwnd: HWND) -> String {
+    get_module_path(get_window_pid(hwnd))
+}
+
+pub fn get_foreground_window() -> HWND {
+    unsafe { GetForegroundWindow() }
+}
+
+pub fn get_window_title(hwnd: HWND) -> String {
     let buf = [0u16; 512];
     let len = buf.len();
     let len = unsafe { GetWindowTextW(hwnd, PWSTR(buf.as_ptr()), len as i32) };
@@ -224,7 +234,7 @@ fn get_window_title(hwnd: HWND) -> String {
     String::from_utf16_lossy(&buf[..len as usize])
 }
 
-fn get_module_path(pid: u32) -> String {
+pub fn get_module_path(pid: u32) -> String {
     let handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, BOOL(0), pid) };
     if handle.is_invalid() {
         return String::default();

@@ -13,15 +13,30 @@ fn load_config() -> Option<Config> {
     ini_file.pop();
     ini_file.push("windows-switcher.ini");
     let conf = Ini::load_from_file(ini_file).ok()?;
-    let sec = conf.section(None::<String>)?;
+    let section = conf.section(None::<String>)?;
     let default_config = Config::default();
-    let trayicon = sec
+    let trayicon = section
         .get("trayicon")
         .and_then(Config::to_bool)
         .unwrap_or(default_config.trayicon);
-    let hotkey = sec
+    let hotkey = section
         .get("hotkey")
         .and_then(HotKeyConfig::parse)
         .unwrap_or(default_config.hotkey);
-    Some(Config { trayicon, hotkey })
+    let blacklist = section
+        .get("blacklist")
+        .map(|v| {
+            let v = v.trim();
+            if v.is_empty() {
+                String::new()
+            } else {
+                format!(",{}", v.trim().to_lowercase())
+            }
+        })
+        .unwrap_or_default();
+    Some(Config {
+        trayicon,
+        hotkey,
+        blacklist,
+    })
 }

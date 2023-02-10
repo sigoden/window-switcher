@@ -1,3 +1,4 @@
+use ini::Ini;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN, VIRTUAL_KEY, VK_CONTROL, VK_LWIN,
     VK_MENU, VK_SHIFT,
@@ -21,6 +22,33 @@ impl Default for Config {
 }
 
 impl Config {
+    pub fn load(ini_conf: &Ini) -> Self {
+        let mut conf = Config::default();
+        if let Some(section) = ini_conf.section(None::<String>) {
+            if let Some(v) = section.get("trayicon").and_then(Config::to_bool) {
+                conf.trayicon = v;
+            }
+        }
+
+        if let Some(section) = ini_conf.section(Some("switch-windows")) {
+            if let Some(v) = section.get("hotkey").and_then(HotKeyConfig::parse) {
+                conf.hotkey = v;
+            }
+
+            if let Some(v) = section.get("blacklist").map(|v| {
+                let v = v.trim();
+                if v.is_empty() {
+                    String::new()
+                } else {
+                    format!(",{}", v.trim().to_lowercase())
+                }
+            }) {
+                conf.blacklist = v;
+            }
+        }
+        conf
+    }
+
     pub fn to_bool(v: &str) -> Option<bool> {
         match v {
             "yes" | "true" | "on" | "1" => Some(true),

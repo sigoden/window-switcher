@@ -211,9 +211,13 @@ pub fn get_window_placement(hwnd: HWND) -> SHOW_WINDOW_CMD {
     placement.showCmd
 }
 
-pub fn get_window_exe_name(hwnd: HWND) -> Option<String> {
+pub fn get_window_exe_name(hwnd: HWND) -> String {
     let module_path = get_window_module_path(hwnd);
-    module_path.split('\\').last().map(|v| v.to_lowercase())
+    module_path
+        .split('\\')
+        .last()
+        .unwrap_or_default()
+        .to_lowercase()
 }
 
 pub fn get_window_module_path(hwnd: HWND) -> String {

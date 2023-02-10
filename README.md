@@ -2,8 +2,7 @@
 
 Easily switch windows of the same application with a hotkey (``` alt + ` ```) on Windows PC.
 
-- 250k single file executable
-- No installation required, just run it.
+- The 300k single-file executable runs without installation.
 - Support custom hotkeys
 - Support blacklist apps to avoid hotkey override
 
@@ -22,6 +21,8 @@ The default configuration is as follows:
 ```ini
 # Whether to show trayicon, yes/no
 trayicon = yes 
+
+[switch-windows]
 
 # Hotkey to switch windows
 hotkey = alt+`

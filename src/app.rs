@@ -265,23 +265,22 @@ impl App {
                 app.user_key_up = true;
             }
             WM_USER_WINDOW => {
-                let mut is_black = false;
                 let app = retrive_app(hwnd)?;
                 let hotkey = app.config.hotkey.clone();
-                if let Some(name) = get_window_exe_name(get_foreground_window()) {
-                    is_black = app.config.blacklist.contains(&format!(",{name}"));
-                    log_info!("{} {}", name, is_black);
-                }
-                match (is_black, app.registered_hotkey) {
-                    (true, true) => {
-                        let _ = Self::unregister_hotkey(hwnd);
-                        app.registered_hotkey = false;
+                let name = get_window_exe_name(get_foreground_window());
+                if !name.is_empty() {
+                    let is_black = app.config.blacklist.contains(&format!(",{name}"));
+                    match (is_black, app.registered_hotkey) {
+                        (true, true) => {
+                            let _ = Self::unregister_hotkey(hwnd);
+                            app.registered_hotkey = false;
+                        }
+                        (false, false) => {
+                            let _ = Self::register_hotkey(hwnd, &hotkey);
+                            app.registered_hotkey = true;
+                        }
+                        _ => {}
                     }
-                    (false, false) => {
-                        let _ = Self::register_hotkey(hwnd, &hotkey);
-                        app.registered_hotkey = true;
-                    }
-                    _ => {}
                 }
             }
             WM_COMMAND => {

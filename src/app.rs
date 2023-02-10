@@ -267,21 +267,21 @@ impl App {
             WM_USER_WINDOW => {
                 let app = retrive_app(hwnd)?;
                 let hotkey = app.config.hotkey.clone();
-				let name = get_window_exe_name(get_foreground_window());
-				if !name.is_empty() {
-					let is_black = app.config.blacklist.contains(&format!(",{name}"));
-					match (is_black, app.registered_hotkey) {
-						(true, true) => {
-							let _ = Self::unregister_hotkey(hwnd);
-							app.registered_hotkey = false;
-						}
-						(false, false) => {
-							let _ = Self::register_hotkey(hwnd, &hotkey);
-							app.registered_hotkey = true;
-						}
-						_ => {}
-					}
-				}
+                let name = get_window_exe_name(get_foreground_window());
+                if !name.is_empty() {
+                    let is_black = app.config.blacklist.contains(&format!(",{name}"));
+                    match (is_black, app.registered_hotkey) {
+                        (true, true) => {
+                            let _ = Self::unregister_hotkey(hwnd);
+                            app.registered_hotkey = false;
+                        }
+                        (false, false) => {
+                            let _ = Self::register_hotkey(hwnd, &hotkey);
+                            app.registered_hotkey = true;
+                        }
+                        _ => {}
+                    }
+                }
             }
             WM_COMMAND => {
                 let value = wparam.0 as u32;

@@ -1,6 +1,10 @@
+use crate::config::{HOTKEY2_ID, HOTKEY_ID};
 use crate::startup::Startup;
-use crate::switcher::{get_foreground_window, get_window_exe_name, Switcher, VirtualDesktop};
+use crate::switcher::{Switcher, VirtualDesktop};
 use crate::trayicon::TrayIcon;
+use crate::utils::{
+    detect_key_down, get_foreground_window, get_window_exe_name, register_hotkey, unregister_hotkey,
+};
 use crate::{log_error, log_info, Config, HotKeyConfig, Win32Error};
 
 use anyhow::{anyhow, bail, Result};
@@ -11,9 +15,6 @@ use wchar::{wchar_t, wchz};
 use windows::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, PWSTR, WPARAM};
 use windows::Win32::System::Com::{CoInitialize, CoUninitialize};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT, VIRTUAL_KEY,
-};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, PostQuitMessage,
     RegisterClassW, RegisterWindowMessageW, SendMessageW, TranslateMessage, CREATESTRUCTW,
@@ -21,9 +22,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_HOTKEY, WM_LBUTTONUP, WM_RBUTTONUP, WM_USER, WNDCLASSW,
 };
 
-pub const WM_USER_TRAYICON: u32 = WM_USER + 1; // trayicon click
-pub const WM_USER_KEY: u32 = WM_USER + 2; // hot key release
-pub const WM_USER_WINDOW: u32 = WM_USER + 3; // foreground window change
+pub const WM_MISC_TRAYICON: u32 = WM_USER + 1; // trayicon click
+pub const WM_MISC_KEYUP: u32 = WM_USER + 2; // hot key release
+pub const WM_MISC_WINDOW: u32 = WM_USER + 3; // foreground window change
 pub const MENU_CMD_EXIT: u32 = 1;
 pub const MENU_CMD_STARTUP: u32 = 2;
 
@@ -41,7 +42,8 @@ pub struct App {
     hwnd: HWND,
     msg_cb: Option<u32>,
     has_com: bool,
-    user_key_up: bool,
+    key_up: bool,
+    key2_up: bool,
     switcher: Switcher,
     config: Config,
     registered_hotkey: bool,
@@ -83,51 +85,64 @@ impl App {
             hwnd: HWND::default(),
             msg_cb: None,
             has_com,
-            user_key_up: false,
+            key_up: false,
+            key2_up: false,
             switcher,
             config: config.clone(),
             registered_hotkey: false,
         };
+
         let hwnd = Self::create_window(instance, name, app)?;
 
-        let hotkey = config.hotkey.clone();
-        let vk = hotkey.vk;
         let empty_blacklist = config.blacklist.is_empty();
 
         if empty_blacklist {
-            Self::register_hotkey(hwnd, &config.hotkey)?;
+            register_hotkey(hwnd, &config.hotkey)?;
         }
 
-        if vk.ne(&VIRTUAL_KEY::default()) {
-            thread::spawn(move || {
-                let mut is_down_prev = false;
-                let mut fg_hwnd_prev = HWND::default();
+        if let Err(err) = register_hotkey(hwnd, &config.hotkey2) {
+            log_error!("{}", err);
+        }
 
-                loop {
-                    thread::sleep(Duration::from_millis(100));
-                    if !empty_blacklist {
-                        let fg_hwnd = get_foreground_window();
-                        if fg_hwnd != fg_hwnd_prev {
-                            unsafe { SendMessageW(hwnd, WM_USER_WINDOW, WPARAM(0), LPARAM(0)) };
-                            fg_hwnd_prev = fg_hwnd;
-                        }
+        let hotkey = config.hotkey.clone();
+        let hotkey2 = config.hotkey2.clone();
+
+        thread::spawn(move || {
+            let mut is_key_down_prev = false;
+            let mut is_key2_down_prev = false;
+            let mut fg_hwnd_prev = HWND::default();
+            let watch_key = |hotkey: &HotKeyConfig, is_key_down_prev: &mut bool| {
+                match (*is_key_down_prev, detect_key_down(hotkey.vk)) {
+                    (true, false) => {
+                        // alt key release
+                        *is_key_down_prev = false;
+                        unsafe {
+                            SendMessageW(hwnd, WM_MISC_KEYUP, WPARAM(hotkey.id as usize), LPARAM(0))
+                        };
                     }
+                    (false, true) => {
+                        *is_key_down_prev = true;
+                    }
+                    _ => {}
+                }
+            };
 
-                    let is_down = unsafe { GetKeyState(vk.0.into()) } < 0;
-                    match (is_down_prev, is_down) {
-                        (true, false) => {
-                            // alt key release
-                            is_down_prev = false;
-                            unsafe { SendMessageW(hwnd, WM_USER_KEY, WPARAM(0), LPARAM(0)) };
-                        }
-                        (false, true) => {
-                            is_down_prev = true;
-                        }
-                        _ => {}
+            loop {
+                thread::sleep(Duration::from_millis(100));
+                if !empty_blacklist {
+                    let fg_hwnd = get_foreground_window();
+                    if fg_hwnd != fg_hwnd_prev {
+                        unsafe { SendMessageW(hwnd, WM_MISC_WINDOW, WPARAM(0), LPARAM(0)) };
+                        fg_hwnd_prev = fg_hwnd;
                     }
                 }
-            });
-        }
+                watch_key(&hotkey, &mut is_key_down_prev);
+                if hotkey.vk != hotkey2.vk {
+                    watch_key(&hotkey2, &mut is_key2_down_prev);
+                }
+            }
+        });
+
         Self::eventloop()
     }
 
@@ -178,18 +193,6 @@ impl App {
         }
         .ok()
         .map_err(|e| anyhow!("Fail to create window, {}", e))
-    }
-
-    fn register_hotkey(hwnd: HWND, hotkey: &HotKeyConfig) -> Result<()> {
-        unsafe { RegisterHotKey(hwnd, 1, hotkey.modifier | MOD_NOREPEAT, hotkey.code) }
-            .ok()
-            .map_err(|e| anyhow!("Fail to register hotkey, {}", e))
-    }
-
-    fn unregister_hotkey(hwnd: HWND) -> Result<()> {
-        unsafe { UnregisterHotKey(hwnd, 1) }
-            .ok()
-            .map_err(|e| anyhow!("Fail to unregister hotkey, {}", e))
     }
 
     fn eventloop() -> Result<()> {
@@ -244,12 +247,18 @@ impl App {
                 };
             },
             WM_HOTKEY => {
-                log_info!("Handle msg=WM_HOTKEY");
+                let hotkey_id = wparam.0 as i32;
+                log_info!("Handle msg=WM_HOTKEY, hotkey_id={}");
                 let app = retrive_app(hwnd)?;
-                app.switcher.switch_window(app.user_key_up)?;
-                app.user_key_up = false;
+                if hotkey_id == HOTKEY_ID {
+                    app.switcher.switch_window(app.key_up)?;
+                    app.key_up = false;
+                } else if hotkey_id == HOTKEY2_ID {
+                    app.switcher.switch_app(app.key2_up)?;
+                    app.key2_up = false;
+                }
             }
-            WM_USER_TRAYICON => {
+            WM_MISC_TRAYICON => {
                 let app = retrive_app(hwnd)?;
                 if let Some(trayicon) = app.trayicon.as_mut() {
                     let keycode = lparam.0 as u32;
@@ -260,11 +269,20 @@ impl App {
                 }
                 return Ok(LRESULT(0));
             }
-            WM_USER_KEY => {
+            WM_MISC_KEYUP => {
+                log_info!("Handle msg=WM_MISC_KEYUP, hotkey_id={}", wparam.0);
                 let app = retrive_app(hwnd)?;
-                app.user_key_up = true;
+                let hotkey_id = wparam.0 as i32;
+                if hotkey_id == HOTKEY_ID {
+                    app.key_up = true;
+                    if app.config.hotkey.vk == app.config.hotkey2.vk {
+                        app.key2_up = true;
+                    }
+                } else if hotkey_id == HOTKEY2_ID {
+                    app.key2_up = true;
+                }
             }
-            WM_USER_WINDOW => {
+            WM_MISC_WINDOW => {
                 let app = retrive_app(hwnd)?;
                 let hotkey = app.config.hotkey.clone();
                 let name = get_window_exe_name(get_foreground_window());
@@ -272,11 +290,15 @@ impl App {
                     let is_black = app.config.blacklist.contains(&format!(",{name}"));
                     match (is_black, app.registered_hotkey) {
                         (true, true) => {
-                            let _ = Self::unregister_hotkey(hwnd);
+                            if let Err(err) = unregister_hotkey(hwnd, HOTKEY_ID) {
+                                log_error!("{}", err);
+                            }
                             app.registered_hotkey = false;
                         }
                         (false, false) => {
-                            let _ = Self::register_hotkey(hwnd, &hotkey);
+                            if let Err(err) = register_hotkey(hwnd, &hotkey) {
+                                log_error!("{}", err);
+                            }
                             app.registered_hotkey = true;
                         }
                         _ => {}
@@ -291,6 +313,10 @@ impl App {
                     match id {
                         MENU_CMD_EXIT => {
                             log_info!("Handle msg=MENU_CMD_EXIT");
+                            let ptr = get_window_ptr(hwnd);
+                            if ptr != 0 {
+                                unsafe { std::ptr::drop_in_place(ptr as *mut App) };
+                            }
                             unsafe { PostQuitMessage(0) };
                         }
                         MENU_CMD_STARTUP => {

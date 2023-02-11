@@ -4,10 +4,14 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     VK_MENU, VK_SHIFT,
 };
 
+pub const HOTKEY_ID: i32 = 1;
+pub const HOTKEY2_ID: i32 = 2;
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub trayicon: bool,
     pub hotkey: HotKeyConfig,
+    pub hotkey2: HotKeyConfig,
     pub blacklist: String,
 }
 
@@ -15,7 +19,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             trayicon: true,
-            hotkey: Default::default(),
+            hotkey: HotKeyConfig::new(HOTKEY_ID, MOD_ALT, 0xC0, VK_MENU),
+            hotkey2: HotKeyConfig::new(HOTKEY2_ID, MOD_ALT, 81, VK_MENU),
             blacklist: Default::default(),
         }
     }
@@ -31,7 +36,10 @@ impl Config {
         }
 
         if let Some(section) = ini_conf.section(Some("switch-windows")) {
-            if let Some(v) = section.get("hotkey").and_then(HotKeyConfig::parse) {
+            if let Some(v) = section
+                .get("hotkey")
+                .and_then(|v| HotKeyConfig::parse(HOTKEY_ID, v))
+            {
                 conf.hotkey = v;
             }
 
@@ -44,6 +52,14 @@ impl Config {
                 }
             }) {
                 conf.blacklist = v;
+            }
+        }
+        if let Some(section) = ini_conf.section(Some("switch-apps")) {
+            if let Some(v) = section
+                .get("hotkey")
+                .and_then(|v| HotKeyConfig::parse(HOTKEY2_ID, v))
+            {
+                conf.hotkey2 = v;
             }
         }
         conf
@@ -60,23 +76,23 @@ impl Config {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HotKeyConfig {
+    pub id: i32,
     pub modifier: HOT_KEY_MODIFIERS,
     pub code: u32,
     pub vk: VIRTUAL_KEY,
 }
 
-impl Default for HotKeyConfig {
-    fn default() -> Self {
-        Self::new(MOD_ALT, 0xC0, VK_MENU)
-    }
-}
-
 impl HotKeyConfig {
-    pub fn new(modifier: HOT_KEY_MODIFIERS, code: u32, vk: VIRTUAL_KEY) -> Self {
-        Self { modifier, code, vk }
+    pub fn new(id: i32, modifier: HOT_KEY_MODIFIERS, code: u32, vk: VIRTUAL_KEY) -> Self {
+        Self {
+            id,
+            modifier,
+            code,
+            vk,
+        }
     }
 
-    pub fn parse(value: &str) -> Option<Self> {
+    pub fn parse(id: i32, value: &str) -> Option<Self> {
         let value = value.to_ascii_lowercase().replace(' ', "");
         let mut modifier: HOT_KEY_MODIFIERS = Default::default();
         let mut code = 0;
@@ -204,7 +220,7 @@ impl HotKeyConfig {
                 }
             }
         }
-        Some(Self::new(modifier, code, vk))
+        Some(Self::new(id, modifier, code, vk))
     }
 }
 
@@ -215,12 +231,17 @@ mod tests {
     #[test]
     fn test_hotkey() {
         assert_eq!(
-            HotKeyConfig::parse("alt + `"),
-            Some(HotKeyConfig::new(MOD_ALT, 0xc0, VK_MENU))
+            HotKeyConfig::parse(1, "alt + `"),
+            Some(HotKeyConfig::new(1, MOD_ALT, 0xc0, VK_MENU))
         );
         assert_eq!(
-            HotKeyConfig::parse("ctrl + shift + `"),
-            Some(HotKeyConfig::new(MOD_CONTROL | MOD_SHIFT, 0xc0, VK_CONTROL))
+            HotKeyConfig::parse(1, "ctrl + shift + `"),
+            Some(HotKeyConfig::new(
+                2,
+                MOD_CONTROL | MOD_SHIFT,
+                0xc0,
+                VK_CONTROL
+            ))
         );
     }
 }

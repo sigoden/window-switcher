@@ -1,5 +1,5 @@
-use crate::app::{MENU_CMD_EXIT, MENU_CMD_STARTUP, NAME, WM_USER_TRAYICON};
-use crate::Win32Result;
+use crate::app::{MENU_CMD_EXIT, MENU_CMD_STARTUP, NAME, WM_MISC_TRAYICON};
+use crate::{log_info, Win32Result};
 
 use anyhow::{anyhow, Result};
 use std::{mem::size_of, ptr};
@@ -70,9 +70,9 @@ impl TrayIcon {
         sz_tip[..NAME.len()].copy_from_slice(NAME);
         NOTIFYICONDATAW {
             cbSize: size_of::<NOTIFYICONDATAW>() as u32,
-            uID: WM_USER_TRAYICON,
+            uID: WM_MISC_TRAYICON,
             uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
-            uCallbackMessage: WM_USER_TRAYICON,
+            uCallbackMessage: WM_MISC_TRAYICON,
             hIcon: icon,
             szTip: sz_tip,
             ..Default::default()
@@ -103,6 +103,7 @@ impl TrayIcon {
 
 impl Drop for TrayIcon {
     fn drop(&mut self) {
+        log_info!("trayicon dropped");
         unsafe { Shell_NotifyIconW(NIM_DELETE, &self.data) };
     }
 }

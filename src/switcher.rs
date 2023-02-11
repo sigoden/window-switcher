@@ -1,51 +1,53 @@
+use crate::utils::{
+    get_foreground_window, get_window_module_path, get_window_title, is_window_minimized,
+    is_window_visible, switch_to,
+};
 use crate::{log_error, log_info};
 use anyhow::{anyhow, Result};
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::ops::Deref;
 use windows::core::GUID;
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, PWSTR};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
 use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_ALL};
-use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
-    PROCESS_VM_READ,
-};
 use windows::Win32::UI::Shell::IVirtualDesktopManager;
-use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetForegroundWindow, GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId,
-    IsWindowVisible, SetForegroundWindow, ShowWindow, SHOW_WINDOW_CMD, SW_RESTORE,
-    SW_SHOWMINIMIZED, WINDOWPLACEMENT,
-};
+use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
 
 #[allow(non_upper_case_globals)]
 const CLSID_VirtualDesktopManager: GUID = GUID::from_u128(0xaa509086_5ca9_4c25_8f95_589d3c07b48a);
 
 pub struct Switcher {
-    windows: HashMap<String, Vec<isize>>,
+    windows: IndexMap<String, Vec<isize>>,
     virtual_desktop: Option<VirtualDesktop>,
+    is_apps_switch: bool,
     state: Option<SwitcherState>,
+    state2: Option<SwitcherState>,
 }
 
 impl Switcher {
     pub fn new(virtual_desktop: Option<VirtualDesktop>) -> Self {
         Self {
-            windows: HashMap::new(),
+            windows: IndexMap::new(),
             virtual_desktop,
+            is_apps_switch: false,
             state: None,
+            state2: None,
         }
     }
 
-    pub fn switch_window(&mut self, restore: bool) -> Result<bool> {
+    pub fn switch_window(&mut self, back: bool) -> Result<bool> {
+        self.is_apps_switch = false;
         self.enum_windows()?;
 
         let current_window = get_foreground_window();
         let module_path = get_window_module_path(current_window);
         if module_path.is_empty() {
+            self.windows.clear();
             return Ok(false);
         }
         match self.windows.get(&module_path) {
             None => Ok(false),
             Some(windows) => {
-                log_info!("available switch windows {:?}", windows);
+                log_info!("switch windows {:?}", windows);
                 let len = windows.len();
                 if len == 1 {
                     return Ok(false);
@@ -54,10 +56,10 @@ impl Switcher {
                 let mut index = 1;
                 let mut new_state_id = windows[index];
                 if len > 2 {
-                    if let Some(state) = self.state.as_mut() {
-                        log_info!("last switch info {:?}", state);
+                    if let Some(state) = self.state.as_ref() {
+                        log_info!("switch windows state {:?}", state);
                         if state.path == module_path {
-                            if restore {
+                            if back {
                                 if state.id != current_id {
                                     if let Some((i, _)) =
                                         windows.iter().enumerate().find(|(_, v)| **v == state.id)
@@ -68,9 +70,6 @@ impl Switcher {
                                 new_state_id = windows[index]
                             } else {
                                 index = (state.index + 1).min(windows.len() - 1);
-                                if windows[index] == new_state_id {
-                                    new_state_id = current_id;
-                                }
                             }
                         }
                     }
@@ -81,7 +80,7 @@ impl Switcher {
                     id: new_state_id,
                 });
                 let hwnd = HWND(windows[index]);
-                self.switch_to(hwnd)?;
+                switch_to(hwnd)?;
 
                 self.windows.clear();
 
@@ -90,20 +89,57 @@ impl Switcher {
         }
     }
 
+    pub fn switch_app(&mut self, back: bool) -> Result<bool> {
+        self.is_apps_switch = true;
+        self.enum_windows()?;
+        let mut index = 1;
+        let module_paths: Vec<&String> = self.windows.keys().collect();
+        let mut new_state_path = module_paths[0];
+        log_info!("switch apps {:?}", module_paths);
+        if module_paths.len() == 1 {
+            self.windows.clear();
+            return Ok(false);
+        }
+        if module_paths.len() > 2 {
+            if let Some(state) = self.state2.as_ref() {
+                log_info!("switch apps state {:?}", state);
+                if back {
+                    if &state.path != module_paths[0] {
+                        if let Some((i, path)) = module_paths
+                            .iter()
+                            .enumerate()
+                            .find(|(_, v)| **v == &state.path)
+                        {
+                            if *path != module_paths[1] {
+                                new_state_path = path;
+                            }
+                            index = i;
+                        }
+                    }
+                } else {
+                    index = (state.index + 1).min(module_paths.len() - 1);
+                    if &state.path != module_paths[index] {
+                        new_state_path = &state.path;
+                    }
+                }
+            }
+        }
+
+        self.state2 = Some(SwitcherState {
+            path: new_state_path.to_string(),
+            index,
+            id: 0,
+        });
+        let hwnd = HWND(self.windows[module_paths[index]][0]);
+        switch_to(hwnd)?;
+
+        self.windows.clear();
+        Ok(true)
+    }
+
     fn enum_windows(&mut self) -> Result<()> {
         unsafe { EnumWindows(Some(enum_window), LPARAM(self as *mut _ as isize)).ok() }
             .map_err(|e| anyhow!("Fail to enum windows {}", e))
-    }
-
-    fn switch_to(&self, hwnd: HWND) -> Result<()> {
-        if get_window_placement(hwnd) == SW_SHOWMINIMIZED {
-            unsafe { ShowWindow(hwnd, SW_RESTORE) }
-                .ok()
-                .map_err(|e| anyhow!("Fail to show window, {}", e))?;
-        }
-        unsafe { SetForegroundWindow(hwnd) }
-            .ok()
-            .map_err(|e| anyhow!("Fail to set window to foreground, {}", e))
     }
 
     fn is_window_on_desktop(&self, hwnd: HWND) -> bool {
@@ -171,6 +207,10 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
         return ok;
     }
 
+    if switcher.is_apps_switch && is_window_minimized(hwnd) {
+        return ok;
+    }
+
     let title = get_window_title(hwnd);
     if title.is_empty() {
         return ok;
@@ -181,10 +221,12 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
         return ok;
     }
 
-    if &title == "Program Manager" && module_path.contains("explorer.exe") {
+    if (title == "Program Manager" && module_path.ends_with("explorer.exe"))
+        || module_path.ends_with("TextInputHost.exe")
+    {
         return ok;
     }
-    log_info!("{:?} {} {}", hwnd, &title, &module_path);
+    // log_info!("{:?} {} {}", hwnd, &title, &module_path);
     switcher
         .windows
         .entry(module_path)
@@ -192,65 +234,4 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
         .push(hwnd.0);
 
     true.into()
-}
-
-pub fn get_window_pid(hwnd: HWND) -> u32 {
-    let mut pid: u32 = 0;
-    unsafe { GetWindowThreadProcessId(hwnd, &mut pid as *mut u32) };
-    pid
-}
-
-pub fn is_window_visible(hwnd: HWND) -> bool {
-    let ret = unsafe { IsWindowVisible(hwnd) };
-    ret.as_bool()
-}
-
-pub fn get_window_placement(hwnd: HWND) -> SHOW_WINDOW_CMD {
-    let mut placement = WINDOWPLACEMENT::default();
-    unsafe { GetWindowPlacement(hwnd, &mut placement) };
-    placement.showCmd
-}
-
-pub fn get_window_exe_name(hwnd: HWND) -> String {
-    let module_path = get_window_module_path(hwnd);
-    module_path
-        .split('\\')
-        .last()
-        .unwrap_or_default()
-        .to_lowercase()
-}
-
-pub fn get_window_module_path(hwnd: HWND) -> String {
-    get_module_path(get_window_pid(hwnd))
-}
-
-pub fn get_foreground_window() -> HWND {
-    unsafe { GetForegroundWindow() }
-}
-
-pub fn get_window_title(hwnd: HWND) -> String {
-    let buf = [0u16; 512];
-    let len = buf.len();
-    let len = unsafe { GetWindowTextW(hwnd, PWSTR(buf.as_ptr()), len as i32) };
-    if len == 0 {
-        return String::default();
-    }
-    String::from_utf16_lossy(&buf[..len as usize])
-}
-
-pub fn get_module_path(pid: u32) -> String {
-    let handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, BOOL(0), pid) };
-    if handle.is_invalid() {
-        return String::default();
-    }
-    let mut len: u32 = 1024;
-    let mut name = vec![0u16; len as usize];
-    let ret = unsafe {
-        QueryFullProcessImageNameW(handle, PROCESS_NAME_WIN32, PWSTR(name.as_ptr()), &mut len)
-    };
-    if !ret.as_bool() || len == 0 {
-        return String::default();
-    }
-    unsafe { name.set_len(len as usize) };
-    String::from_utf16_lossy(&name)
 }

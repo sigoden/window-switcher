@@ -100,20 +100,24 @@ pub fn detect_key_down(vk: VIRTUAL_KEY) -> bool {
     (unsafe { GetKeyState(vk.0.into()) }) < 0
 }
 
-pub fn register_hotkey(hwnd: HWND, hotkey: &HotKeyConfig) -> Result<()> {
-    if hotkey.id == 0 {
-        return Ok(());
+pub fn register_hotkey(hwnd: HWND, id: usize, hotkey: &HotKeyConfig) -> Result<()> {
+    unsafe {
+        RegisterHotKey(
+            hwnd,
+            id as i32,
+            hotkey.modifier() | MOD_NOREPEAT,
+            hotkey.code as u32,
+        )
     }
-    unsafe { RegisterHotKey(hwnd, hotkey.id, hotkey.modifier | MOD_NOREPEAT, hotkey.code) }
-        .ok()
-        .map_err(|e| anyhow!("Fail to register hotkey {}, {}", hotkey.id, e))
+    .ok()
+    .map_err(|e| anyhow!("Fail to register hotkey {}, {}", id, e))
 }
 
-pub fn unregister_hotkey(hwnd: HWND, id: i32) -> Result<()> {
+pub fn unregister_hotkey(hwnd: HWND, id: usize) -> Result<()> {
     if id == 0 {
         return Ok(());
     }
-    unsafe { UnregisterHotKey(hwnd, id) }
+    unsafe { UnregisterHotKey(hwnd, id as i32) }
         .ok()
         .map_err(|e| anyhow!("Fail to unregister hotkey {}, {}", id, e))
 }

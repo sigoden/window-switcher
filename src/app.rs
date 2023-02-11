@@ -1,4 +1,3 @@
-use crate::config::{HOTKEY2_ID, HOTKEY_ID};
 use crate::startup::Startup;
 use crate::switcher::{Switcher, VirtualDesktop};
 use crate::trayicon::TrayIcon;
@@ -42,11 +41,10 @@ pub struct App {
     hwnd: HWND,
     msg_cb: Option<u32>,
     has_com: bool,
-    key_up: bool,
-    key2_up: bool,
     switcher: Switcher,
     config: Config,
-    registered_hotkey: bool,
+    keys_up: [bool; 2],
+    hotkeys_enable: [bool; 2],
 }
 
 impl App {
@@ -85,11 +83,10 @@ impl App {
             hwnd: HWND::default(),
             msg_cb: None,
             has_com,
-            key_up: false,
-            key2_up: false,
             switcher,
             config: config.clone(),
-            registered_hotkey: false,
+            keys_up: Default::default(),
+            hotkeys_enable: Default::default(),
         };
 
         let hwnd = Self::create_window(instance, name, app)?;
@@ -97,28 +94,24 @@ impl App {
         let empty_blacklist = config.blacklist.is_empty();
 
         if empty_blacklist {
-            register_hotkey(hwnd, &config.hotkey)?;
+            register_hotkey(hwnd, 0, &config.hotkeys[0])?;
         }
 
-        if let Err(err) = register_hotkey(hwnd, &config.hotkey2) {
+        if let Err(err) = register_hotkey(hwnd, 1, &config.hotkeys[1]) {
             log_error!("{}", err);
         }
 
-        let hotkey = config.hotkey.clone();
-        let hotkey2 = config.hotkey2.clone();
-
+        let hotkeys = config.hotkeys.clone();
         thread::spawn(move || {
             let mut is_key_down_prev = false;
             let mut is_key2_down_prev = false;
             let mut fg_hwnd_prev = HWND::default();
-            let watch_key = |hotkey: &HotKeyConfig, is_key_down_prev: &mut bool| {
-                match (*is_key_down_prev, detect_key_down(hotkey.vk)) {
+            let watch_key = |id: usize, hotkey: &HotKeyConfig, is_key_down_prev: &mut bool| {
+                match (*is_key_down_prev, detect_key_down(hotkey.meta)) {
                     (true, false) => {
                         // alt key release
                         *is_key_down_prev = false;
-                        unsafe {
-                            SendMessageW(hwnd, WM_MISC_KEYUP, WPARAM(hotkey.id as usize), LPARAM(0))
-                        };
+                        unsafe { SendMessageW(hwnd, WM_MISC_KEYUP, WPARAM(id), LPARAM(0)) };
                     }
                     (false, true) => {
                         *is_key_down_prev = true;
@@ -136,18 +129,26 @@ impl App {
                         fg_hwnd_prev = fg_hwnd;
                     }
                 }
-                watch_key(&hotkey, &mut is_key_down_prev);
-                if hotkey.vk != hotkey2.vk {
-                    watch_key(&hotkey2, &mut is_key2_down_prev);
+                watch_key(0, &hotkeys[0], &mut is_key_down_prev);
+                if hotkeys[0].meta != hotkeys[1].meta {
+                    watch_key(1, &hotkeys[1], &mut is_key2_down_prev);
                 }
             }
         });
 
-        Self::eventloop()
+        Self::eventloop();
+
+        App::destory(hwnd);
+
+        Ok(())
     }
 
     fn init_com() -> Result<()> {
         unsafe { CoInitialize(null_mut()).map_err(|e| anyhow!("Fail to init com, {}", e)) }
+    }
+
+    fn destory(hwnd: HWND) {
+        unsafe { std::ptr::drop_in_place(get_window_ptr(hwnd) as *mut Self) }
     }
 
     fn get_instance() -> Result<HINSTANCE> {
@@ -174,7 +175,7 @@ impl App {
     }
 
     fn create_window(instance: HINSTANCE, name: PWSTR, app: App) -> Result<HWND> {
-        let ptr = Box::into_raw(Box::new(app));
+        let app_ptr = Box::into_raw(Box::new(app));
         unsafe {
             CreateWindowExW(
                 WINDOW_EX_STYLE(0),
@@ -188,14 +189,14 @@ impl App {
                 None,
                 None,
                 instance,
-                ptr as *mut _,
+                app_ptr as *mut _,
             )
         }
         .ok()
         .map_err(|e| anyhow!("Fail to create window, {}", e))
     }
 
-    fn eventloop() -> Result<()> {
+    fn eventloop() {
         let mut message = MSG::default();
         loop {
             let ret = unsafe { GetMessageW(&mut message, HWND(0), 0, 0) };
@@ -210,8 +211,6 @@ impl App {
                 },
             }
         }
-
-        Ok(())
     }
 
     unsafe extern "system" fn winproc(
@@ -247,23 +246,22 @@ impl App {
                 };
             },
             WM_HOTKEY => {
-                let hotkey_id = wparam.0 as i32;
-                log_info!("Handle msg=WM_HOTKEY, hotkey_id={}");
+                let hotkey_id = wparam.0;
+                log_info!("Handle msg=WM_HOTKEY, hotkey_id={}", hotkey_id);
                 let app = retrive_app(hwnd)?;
-                if hotkey_id == HOTKEY_ID {
-                    app.switcher.switch_window(app.key_up)?;
-                    app.key_up = false;
-                } else if hotkey_id == HOTKEY2_ID {
-                    app.switcher.switch_app(app.key2_up)?;
-                    app.key2_up = false;
+                if hotkey_id == 0 {
+                    app.switcher.switch_window(app.keys_up[hotkey_id])?;
+                } else if hotkey_id == 1 {
+                    app.switcher.switch_app(app.keys_up[hotkey_id])?;
                 }
+                app.keys_up[hotkey_id] = false;
             }
             WM_MISC_TRAYICON => {
                 let app = retrive_app(hwnd)?;
                 if let Some(trayicon) = app.trayicon.as_mut() {
                     let keycode = lparam.0 as u32;
                     if keycode == WM_LBUTTONUP || keycode == WM_RBUTTONUP {
-                        log_info!("Handle msg=WM_TAYICON");
+                        log_info!("Handle msg=WM_MISC_TRAYICON");
                         trayicon.popup(app.startup.is_enable)?;
                     }
                 }
@@ -272,34 +270,31 @@ impl App {
             WM_MISC_KEYUP => {
                 log_info!("Handle msg=WM_MISC_KEYUP, hotkey_id={}", wparam.0);
                 let app = retrive_app(hwnd)?;
-                let hotkey_id = wparam.0 as i32;
-                if hotkey_id == HOTKEY_ID {
-                    app.key_up = true;
-                    if app.config.hotkey.vk == app.config.hotkey2.vk {
-                        app.key2_up = true;
-                    }
-                } else if hotkey_id == HOTKEY2_ID {
-                    app.key2_up = true;
+                let hotkey_id = wparam.0;
+                if hotkey_id == 0 && app.config.hotkeys[0].meta == app.config.hotkeys[1].meta {
+                    app.keys_up[1] = true;
                 }
+                app.keys_up[hotkey_id] = true;
             }
             WM_MISC_WINDOW => {
                 let app = retrive_app(hwnd)?;
-                let hotkey = app.config.hotkey.clone();
+                let hotkey_id = 0;
+                let hotkey = &app.config.hotkeys[hotkey_id];
                 let name = get_window_exe_name(get_foreground_window());
                 if !name.is_empty() {
                     let is_black = app.config.blacklist.contains(&format!(",{name}"));
-                    match (is_black, app.registered_hotkey) {
+                    match (is_black, app.hotkeys_enable[hotkey_id]) {
                         (true, true) => {
-                            if let Err(err) = unregister_hotkey(hwnd, HOTKEY_ID) {
+                            if let Err(err) = unregister_hotkey(hwnd, hotkey_id) {
                                 log_error!("{}", err);
                             }
-                            app.registered_hotkey = false;
+                            app.hotkeys_enable[hotkey_id] = false;
                         }
                         (false, false) => {
-                            if let Err(err) = register_hotkey(hwnd, &hotkey) {
+                            if let Err(err) = register_hotkey(hwnd, hotkey_id, hotkey) {
                                 log_error!("{}", err);
                             }
-                            app.registered_hotkey = true;
+                            app.hotkeys_enable[hotkey_id] = true;
                         }
                         _ => {}
                     }
@@ -313,10 +308,6 @@ impl App {
                     match id {
                         MENU_CMD_EXIT => {
                             log_info!("Handle msg=MENU_CMD_EXIT");
-                            let ptr = get_window_ptr(hwnd);
-                            if ptr != 0 {
-                                unsafe { std::ptr::drop_in_place(ptr as *mut App) };
-                            }
                             unsafe { PostQuitMessage(0) };
                         }
                         MENU_CMD_STARTUP => {
@@ -356,7 +347,7 @@ fn retrive_app(hwnd: HWND) -> Result<&'static mut App> {
     unsafe {
         let ptr = get_window_ptr(hwnd);
         if ptr == 0 {
-            bail!("Fail to get app from win ptr");
+            bail!("Fail to retrieve app from window ptr");
         }
         let tx: &mut App = &mut *(ptr as *mut _);
         Ok(tx)

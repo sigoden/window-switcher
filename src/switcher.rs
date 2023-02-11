@@ -64,10 +64,12 @@ impl Switcher {
                                     if let Some((i, _)) =
                                         windows.iter().enumerate().find(|(_, v)| **v == state.id)
                                     {
-                                        index = i
+                                        index = i;
+                                        if windows[index] != new_state_id {
+                                            new_state_id = windows[index];
+                                        }
                                     }
                                 }
-                                new_state_id = windows[index]
                             } else {
                                 index = (state.index + 1).min(windows.len() - 1);
                             }

@@ -69,6 +69,8 @@ impl Switcher {
                                             new_state_id = windows[index];
                                         }
                                     }
+                                } else {
+                                    new_state_id = windows[index];
                                 }
                             } else {
                                 index = (state.index + 1).min(windows.len() - 1);

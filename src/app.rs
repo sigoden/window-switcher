@@ -103,18 +103,17 @@ impl App {
 
         let hotkeys = config.hotkeys.clone();
         thread::spawn(move || {
-            let mut is_key_down_prev = false;
-            let mut is_key2_down_prev = false;
+            let mut is_down_keys = [false, false];
             let mut fg_hwnd_prev = HWND::default();
-            let watch_key = |id: usize, hotkey: &HotKeyConfig, is_key_down_prev: &mut bool| {
-                match (*is_key_down_prev, detect_key_down(hotkey.meta)) {
+            let watch_key = |id: usize, hotkey: &HotKeyConfig, is_down_prev: &mut bool| {
+                match (*is_down_prev, detect_key_down(hotkey.meta)) {
                     (true, false) => {
                         // alt key release
-                        *is_key_down_prev = false;
+                        *is_down_prev = false;
                         unsafe { SendMessageW(hwnd, WM_MISC_KEYUP, WPARAM(id), LPARAM(0)) };
                     }
                     (false, true) => {
-                        *is_key_down_prev = true;
+                        *is_down_prev = true;
                     }
                     _ => {}
                 }
@@ -129,9 +128,9 @@ impl App {
                         fg_hwnd_prev = fg_hwnd;
                     }
                 }
-                watch_key(0, &hotkeys[0], &mut is_key_down_prev);
+                watch_key(0, &hotkeys[0], &mut is_down_keys[0]);
                 if hotkeys[0].meta != hotkeys[1].meta {
-                    watch_key(1, &hotkeys[1], &mut is_key2_down_prev);
+                    watch_key(1, &hotkeys[1], &mut is_down_keys[1]);
                 }
             }
         });
@@ -268,7 +267,6 @@ impl App {
                 return Ok(LRESULT(0));
             }
             WM_MISC_KEYUP => {
-                log_info!("Handle msg=WM_MISC_KEYUP, hotkey_id={}", wparam.0);
                 let app = retrive_app(hwnd)?;
                 let hotkey_id = wparam.0;
                 if hotkey_id == 0 && app.config.hotkeys[0].meta == app.config.hotkeys[1].meta {

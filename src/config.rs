@@ -1,9 +1,13 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, path::PathBuf};
 
+use anyhow::Result;
 use ini::Ini;
+use log::LevelFilter;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_WIN, VIRTUAL_KEY, VK_LCONTROL, VK_LMENU, VK_LWIN,
 };
+
+use crate::utils::get_exe_folder;
 
 pub const SWITCH_WINDOWS_HOTKEY_ID: u32 = 1;
 pub const SWITCH_APPS_HOTKEY_ID: u32 = 2;
@@ -11,6 +15,8 @@ pub const SWITCH_APPS_HOTKEY_ID: u32 = 2;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub trayicon: bool,
+    pub log_level: LevelFilter,
+    pub log_file: Option<PathBuf>,
     pub switch_windows_hotkey: HotKeyConfig,
     pub switch_windows_blacklist: HashSet<String>,
     pub switch_apps_enable: bool,
@@ -21,6 +27,8 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             trayicon: true,
+            log_level: LevelFilter::Info,
+            log_file: None,
             switch_windows_hotkey: HotKeyConfig::parse("alt + `").unwrap(),
             switch_windows_blacklist: Default::default(),
             switch_apps_enable: true,
@@ -30,11 +38,27 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn load(ini_conf: &Ini) -> Self {
+    pub fn load(ini_conf: &Ini) -> Result<Self> {
         let mut conf = Config::default();
         if let Some(section) = ini_conf.section(None::<String>) {
             if let Some(v) = section.get("trayicon").and_then(Config::to_bool) {
                 conf.trayicon = v;
+            }
+        }
+
+        if let Some(section) = ini_conf.section(Some("log")) {
+            if let Some(level) = section.get("level").and_then(|v| v.parse().ok()) {
+                conf.log_level = level;
+            }
+            if let Some(path) = section.get("file") {
+                if !path.trim().is_empty() {
+                    let mut path = PathBuf::from(path);
+                    if !path.is_absolute() {
+                        let parent = get_exe_folder()?;
+                        path = parent.join(path);
+                    }
+                    conf.log_file = Some(path);
+                }
             }
         }
 
@@ -55,7 +79,7 @@ impl Config {
                 conf.switch_apps_hotkey = v;
             }
         }
-        conf
+        Ok(conf)
     }
 
     pub fn to_bool(v: &str) -> Option<bool> {

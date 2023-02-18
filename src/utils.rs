@@ -25,10 +25,19 @@ use windows::{
     },
 };
 
+use std::path::PathBuf;
 use std::{ffi::c_void, mem::size_of};
 
-use crate::{error, HotKeyConfig};
+use crate::HotKeyConfig;
 pub const BUFFER_SIZE: usize = 1024;
+
+pub fn get_exe_folder() -> Result<PathBuf> {
+    let path =
+        std::env::current_exe().map_err(|err| anyhow!("Failed to get binary path, {err}"))?;
+    path.parent()
+        .ok_or_else(|| anyhow!("Failed to get binary folder"))
+        .map(|v| v.to_path_buf())
+}
 
 pub fn get_exe_path() -> Vec<u16> {
     let mut path = vec![0u16; BUFFER_SIZE];

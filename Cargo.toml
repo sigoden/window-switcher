@@ -8,8 +8,10 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 indexmap = "1.9.2"
+log = "0.4.17"
 once_cell = "1.17.1"
 rust-ini = "0.18.0"
+simple-logging = "2.0.2"
 wchar = "0.11"
 
 [dependencies.windows]
@@ -26,7 +28,6 @@ features = [
     "Win32_System_LibraryLoader",
     "Win32_System_Registry",
     "Win32_System_Diagnostics",
-    "Win32_System_Diagnostics_Debug",
     "Win32_System_Threading",
 ]
 

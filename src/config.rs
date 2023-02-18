@@ -1,23 +1,23 @@
+use std::collections::HashSet;
+
 use ini::Ini;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_WIN, VIRTUAL_KEY, VK_LCONTROL, VK_LMENU, VK_LWIN,
 };
 
+pub const HOTKEY_ID: i32 = 1;
 #[derive(Debug, Clone)]
 pub struct Config {
     pub trayicon: bool,
-    pub hotkeys: [HotKeyConfig; 2],
-    pub blacklist: String,
+    pub hotkey: HotKeyConfig,
+    pub blacklist: HashSet<String>,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             trayicon: true,
-            hotkeys: [
-                HotKeyConfig::parse("alt + `").unwrap(),
-                HotKeyConfig::parse("alt + q").unwrap(),
-            ],
+            hotkey: HotKeyConfig::parse("alt + `").unwrap(),
             blacklist: Default::default(),
         }
     }
@@ -37,14 +37,10 @@ impl Config {
                 conf.hotkeys[0] = v;
             }
 
-            if let Some(v) = section.get("blacklist").map(|v| {
-                let v = v.trim();
-                if v.is_empty() {
-                    String::new()
-                } else {
-                    format!(",{}", v.trim().to_lowercase())
-                }
-            }) {
+            if let Some(v) = section
+                .get("blacklist")
+                .map(|v| v.split(',').map(|v| v.trim().to_lowercase()).collect())
+            {
                 conf.blacklist = v;
             }
         }
@@ -67,17 +63,17 @@ impl Config {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HotKeyConfig {
-    pub meta: VIRTUAL_KEY,
+    pub modifier: VIRTUAL_KEY,
     pub code: u16,
 }
 
 impl HotKeyConfig {
-    pub fn new(meta: VIRTUAL_KEY, code: u16) -> Self {
-        Self { meta, code }
+    pub fn new(modifier: VIRTUAL_KEY, code: u16) -> Self {
+        Self { modifier, code }
     }
 
     pub fn modifier(&self) -> HOT_KEY_MODIFIERS {
-        match self.meta {
+        match self.modifier {
             VK_LMENU => MOD_ALT,
             VK_LCONTROL => MOD_CONTROL,
             VK_LWIN => MOD_WIN,
@@ -91,7 +87,7 @@ impl HotKeyConfig {
         if keys.len() != 2 {
             return None;
         }
-        let meta = match keys[0] {
+        let modifier = match keys[0] {
             "win" => VK_LWIN,
             "alt" => VK_LMENU,
             "ctrl" => VK_LCONTROL,
@@ -188,7 +184,7 @@ impl HotKeyConfig {
             "~" | "`" => 0xc0,
             _ => return None,
         };
-        Some(Self { meta, code })
+        Some(Self { modifier, code })
     }
 }
 

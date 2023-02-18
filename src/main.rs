@@ -1,11 +1,11 @@
 #![windows_subsystem = "windows"]
 
 use ini::Ini;
-use windows_switcher::{start_app, Config};
+use windows_switcher::{start, Config};
 
 fn main() {
     let config = load_config().unwrap_or_default();
-    start_app(&config);
+    start(&config);
 }
 
 fn load_config() -> Option<Config> {

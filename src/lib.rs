@@ -7,9 +7,7 @@ mod utils;
 #[macro_use]
 mod macros;
 mod config;
+mod utils;
 
-use windows::core::Error as Win32Error;
-use windows::core::Result as Win32Result;
-
-pub use crate::app::start_app;
+pub use crate::app::start;
 pub use crate::config::{Config, HotKeyConfig};

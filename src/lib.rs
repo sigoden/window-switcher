@@ -2,8 +2,6 @@ mod app;
 mod startup;
 mod switcher;
 mod trayicon;
-mod utils;
-
 #[macro_use]
 mod macros;
 mod config;

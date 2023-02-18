@@ -98,7 +98,6 @@ impl TrayIcon {
 
 impl Drop for TrayIcon {
     fn drop(&mut self) {
-        log_info!("trayicon dropped");
         unsafe { Shell_NotifyIconW(NIM_DELETE, &self.data) };
     }
 }

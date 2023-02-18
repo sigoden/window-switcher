@@ -1,4 +1,3 @@
-use crate::debug;
 use crate::utils::{
     get_foreground_window, get_module_path, get_window_pid, is_iconic, is_popup_window,
     is_special_window, is_window_cloaked, is_window_visible, switch_to,

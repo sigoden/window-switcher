@@ -6,7 +6,7 @@ use crate::utils::{
     check_error, get_foreground_window, get_window_exe, get_window_ptr, register_hotkey,
     set_window_ptr, unregister_hotkey, CheckError,
 };
-use crate::{alert, debug, error, Config, HotKeyConfig};
+use crate::{Config, HotKeyConfig};
 
 use anyhow::{anyhow, Result};
 use once_cell::sync::Lazy;
@@ -32,10 +32,8 @@ pub const IDM_STARTUP: u32 = 2;
 
 pub const NAME: PCWSTR = w!("Windows Switcher");
 
-pub fn start(config: &Config) {
-    if let Err(err) = App::start(config) {
-        alert!("{err}");
-    }
+pub fn start(config: &Config) -> Result<()> {
+    App::start(config)
 }
 
 /// When the taskbar is created, it registers a message with the "TaskbarCreated" string and then broadcasts this message to all top-level windows

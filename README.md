@@ -24,8 +24,6 @@ Experimental switching app
 - Press and release `alt+a` at the same time to switch back to the last focus app.
 
 </details>
-<summary>
-</summary>
 
 ## Configuration
 
@@ -53,4 +51,12 @@ enable = yes
 
 # Hotkey to switch apps
 hotkey = alt+a  # Unable to register system shortcuts such as `alt+tab`
+
+[log]
+
+# Log level can be one of off,error,warn,info,debug,trace.
+level = info 
+
+# Log file
+file = 
 ```

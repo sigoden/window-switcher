@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use windows::core::Error;
+use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOPMOST};
 use windows::{
     core::PWSTR,
     Win32::{
@@ -100,6 +101,11 @@ pub fn is_zoombed(hwnd: HWND) -> bool {
 pub fn is_window_visible(hwnd: HWND) -> bool {
     let ret = unsafe { IsWindowVisible(hwnd) };
     ret.as_bool()
+}
+
+pub fn is_window_fixed_top(hwnd: HWND) -> bool {
+    let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
+    ex_style & WS_EX_TOPMOST.0 != 0
 }
 
 pub fn is_window_cloaked(hwnd: HWND) -> bool {

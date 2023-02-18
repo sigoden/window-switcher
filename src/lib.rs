@@ -1,13 +1,14 @@
 mod app;
+mod config;
 mod startup;
 mod switcher;
 mod trayicon;
+
+pub mod utils;
 #[macro_use]
-mod macros;
-mod config;
+pub mod macros;
+#[macro_use]
+extern crate log;
 
-use windows::core::Error as Win32Error;
-use windows::core::Result as Win32Result;
-
-pub use crate::app::start_app;
+pub use crate::app::start;
 pub use crate::config::{Config, HotKeyConfig};

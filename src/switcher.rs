@@ -10,12 +10,14 @@ use windows::Win32::UI::WindowsAndMessaging::EnumWindows;
 
 pub struct Switcher {
     switch_windows_state: Option<SwitcherState>,
+    switch_apps_state: Option<SwitcherState>,
 }
 
 impl Switcher {
     pub fn new() -> Self {
         Self {
             switch_windows_state: None,
+            switch_apps_state: None,
         }
     }
 
@@ -31,31 +33,31 @@ impl Switcher {
             None => Ok(false),
             Some(windows) => {
                 debug!("switch windows {:?}", windows);
-                let len = windows.len();
-                if len == 1 {
+                let windows_len = windows.len();
+                if windows_len == 1 {
                     return Ok(false);
                 }
                 let current_id = windows[0];
                 let mut index = 1;
-                let next_window_id = windows[1];
-                let mut new_state_id = next_window_id;
-                if len > 2 {
+                let mut state_id = current_id;
+                if windows_len > 2 {
                     if let Some(state) = self.switch_windows_state.as_ref() {
                         debug!("{state:?}");
+                        state_id = state.id;
                         if state.path == module_path {
                             if back {
                                 if state.id != current_id {
                                     if let Some((i, _)) =
                                         windows.iter().enumerate().find(|(_, v)| **v == state.id)
                                     {
-                                        if index == 1 {
-                                            new_state_id = current_id;
-                                        }
                                         index = i;
                                     }
                                 }
+                                if windows[index] == state_id {
+                                    state_id = current_id;
+                                }
                             } else {
-                                index = (state.index + 1).min(windows.len() - 1);
+                                index = (state.index + 1).min(windows_len - 1);
                             }
                         }
                     }
@@ -63,7 +65,7 @@ impl Switcher {
                 self.switch_windows_state = Some(SwitcherState {
                     path: module_path,
                     index,
-                    id: new_state_id,
+                    id: state_id,
                 });
                 let hwnd = HWND(windows[index]);
                 debug!("{:?} {:?}", hwnd, self.switch_windows_state);
@@ -72,6 +74,51 @@ impl Switcher {
                 Ok(true)
             }
         }
+    }
+
+    pub fn next_app(&mut self, back: bool) -> Result<bool> {
+        let windows = Self::get_windows(true)?;
+        let module_paths: Vec<&String> = windows.keys().collect();
+        debug!("switch apps {:?}", module_paths);
+        let module_paths_len = module_paths.len();
+        if module_paths_len == 1 {
+            return Ok(false);
+        }
+        let current_path = module_paths[0];
+        let mut index = 1;
+        let mut state_path = current_path;
+        if module_paths_len > 2 {
+            if let Some(state) = self.switch_apps_state.as_ref() {
+                debug!("{state:?}");
+                state_path = &state.path;
+                if back {
+                    if &state.path != current_path {
+                        if let Some((i, _)) = module_paths
+                            .iter()
+                            .enumerate()
+                            .find(|(_, v)| **v == &state.path)
+                        {
+                            index = i;
+                        }
+                    }
+                    if module_paths[index] == state_path {
+                        state_path = current_path;
+                    }
+                } else {
+                    index = (state.index + 1).min(module_paths.len() - 1);
+                }
+            }
+        }
+
+        self.switch_apps_state = Some(SwitcherState {
+            path: state_path.to_string(),
+            index,
+            id: 0,
+        });
+        let hwnd = HWND(windows[module_paths[index]][0]);
+        switch_to(hwnd)?;
+
+        Ok(true)
     }
 
     fn get_windows(no_minimal: bool) -> Result<IndexMap<String, Vec<isize>>> {

@@ -1,3 +1,4 @@
+use crate::config::{SWITCH_APPS_HOTKEY_ID, SWITCH_WINDOWS_HOTKEY_ID};
 use crate::startup::Startup;
 use crate::switcher::Switcher;
 use crate::trayicon::TrayIcon;
@@ -49,7 +50,8 @@ pub struct App {
     switcher: Switcher,
     config: Config,
     enable_hotkey: bool,
-    modifier_keyup: bool,
+    switch_windows_modifier_released: bool,
+    switch_apps_modifier_released: bool,
 }
 
 impl App {
@@ -76,7 +78,7 @@ impl App {
         };
         let startup = Startup::init()?;
         let switcher = Switcher::new();
-        let is_empty_blacklist = config.blacklist.is_empty();
+        let is_empty_blacklist = config.switch_windows_blacklist.is_empty();
 
         let app = App {
             hwnd: HWND::default(),
@@ -84,8 +86,9 @@ impl App {
             startup,
             switcher,
             config: config.clone(),
-            modifier_keyup: true,
             enable_hotkey: is_empty_blacklist,
+            switch_windows_modifier_released: true,
+            switch_apps_modifier_released: true,
         };
 
         let app_ptr = Box::into_raw(Box::new(app));
@@ -109,12 +112,20 @@ impl App {
         .check_error()
         .map_err(|err| anyhow!("Failed to create windows, {err}"))?;
 
-        let hotkey = config.hotkey.clone();
         if is_empty_blacklist {
-            register_hotkey(hwnd, &hotkey)?;
+            register_hotkey(
+                hwnd,
+                SWITCH_WINDOWS_HOTKEY_ID,
+                &config.switch_windows_hotkey,
+            )?;
         }
+        if config.switch_apps_enable {
+            register_hotkey(hwnd, SWITCH_APPS_HOTKEY_ID, &config.switch_apps_hotkey)?;
+        }
+
+        let config = config.clone();
         thread::spawn(move || {
-            watch(hwnd, hotkey, is_empty_blacklist);
+            watch(hwnd, config);
         });
 
         Self::eventloop()
@@ -162,7 +173,7 @@ impl App {
     fn handle_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Result<LRESULT> {
         match msg {
             WM_USER_TRAYICON => {
-                let app = retrive_app(hwnd)?;
+                let app = get_app(hwnd)?;
                 if let Some(trayicon) = app.trayicon.as_mut() {
                     let keycode = lparam.0 as u32;
                     if keycode == WM_LBUTTONUP || keycode == WM_RBUTTONUP {
@@ -172,8 +183,14 @@ impl App {
                 return Ok(LRESULT(0));
             }
             WM_USER_MODIFIER_KEYUP => {
-                let app = retrive_app(hwnd)?;
-                app.modifier_keyup = true;
+                let app = get_app(hwnd)?;
+                let modifier = wparam.0 as u16;
+                if modifier == app.config.switch_windows_hotkey.modifier.0 {
+                    app.switch_windows_modifier_released = true;
+                }
+                if modifier == app.config.switch_apps_hotkey.modifier.0 {
+                    app.switch_apps_modifier_released = true;
+                }
             }
             WM_USER_FOREGROUND_CHANGE => {
                 let fg_hwnd = get_foreground_window();
@@ -181,14 +198,21 @@ impl App {
                 if exe.is_empty() {
                     return Ok(LRESULT(0));
                 };
-                let app = retrive_app(hwnd)?;
+                let app = get_app(hwnd)?;
                 let config = &app.config;
-                match (config.blacklist.contains(&exe), app.enable_hotkey) {
-                    (false, false) => match register_hotkey(hwnd, &config.hotkey) {
+                match (
+                    config.switch_windows_blacklist.contains(&exe),
+                    app.enable_hotkey,
+                ) {
+                    (false, false) => match register_hotkey(
+                        hwnd,
+                        SWITCH_WINDOWS_HOTKEY_ID,
+                        &config.switch_windows_hotkey,
+                    ) {
                         Ok(_) => app.enable_hotkey = true,
                         Err(err) => error!("{err}"),
                     },
-                    (true, true) => match unregister_hotkey(hwnd) {
+                    (true, true) => match unregister_hotkey(hwnd, SWITCH_WINDOWS_HOTKEY_ID) {
                         Ok(_) => app.enable_hotkey = false,
                         Err(err) => error!("{err}"),
                     },
@@ -207,9 +231,20 @@ impl App {
             }
             WM_HOTKEY => {
                 debug!("Handle msg=WM_HOTKEY");
-                let app = retrive_app(hwnd)?;
-                app.switcher.next_window(app.modifier_keyup)?;
-                app.modifier_keyup = false;
+                let app = get_app(hwnd)?;
+                let hotkey_id = wparam.0 as u32;
+                match hotkey_id {
+                    SWITCH_WINDOWS_HOTKEY_ID => {
+                        app.switcher
+                            .next_window(app.switch_windows_modifier_released)?;
+                        app.switch_windows_modifier_released = false;
+                    }
+                    SWITCH_APPS_HOTKEY_ID => {
+                        app.switcher.next_app(app.switch_apps_modifier_released)?;
+                        app.switch_apps_modifier_released = false;
+                    }
+                    _ => {}
+                }
             }
             WM_COMMAND => {
                 let value = wparam.0 as u32;
@@ -218,13 +253,13 @@ impl App {
                 if kind == 0 {
                     match id {
                         IDM_EXIT => {
-                            if let Ok(app) = retrive_app(hwnd) {
+                            if let Ok(app) = get_app(hwnd) {
                                 unsafe { drop(Box::from_raw(app)) }
                             }
                             unsafe { PostQuitMessage(0) }
                         }
                         IDM_STARTUP => {
-                            let app = retrive_app(hwnd)?;
+                            let app = get_app(hwnd)?;
                             app.startup.toggle()?;
                         }
                         _ => {}
@@ -232,7 +267,7 @@ impl App {
                 }
             }
             _ if msg == *S_U_TASKBAR_RESTART => {
-                let app = retrive_app(hwnd)?;
+                let app = get_app(hwnd)?;
                 app.set_trayicon()?;
             }
             _ => {}
@@ -241,7 +276,7 @@ impl App {
     }
 }
 
-fn retrive_app(hwnd: HWND) -> Result<&'static mut App> {
+fn get_app(hwnd: HWND) -> Result<&'static mut App> {
     unsafe {
         let ptr = check_error(|| get_window_ptr(hwnd))
             .map_err(|err| anyhow!("Failed to get window ptr, {err}"))?;
@@ -250,29 +285,54 @@ fn retrive_app(hwnd: HWND) -> Result<&'static mut App> {
     }
 }
 
-pub fn watch(hwnd: HWND, hotkey: HotKeyConfig, is_empty_blacklist: bool) {
+pub fn watch(hwnd: HWND, config: Config) {
     let mut fg_hwnd_prev = HWND::default();
-    let mut is_modifer_pressed_prev: bool = false;
+    let mut is_switch_windows_modifier_pressed_prev: bool = false;
+    let mut is_switch_apps_modifier_pressed_prev: bool = false;
+    let watch_key = |hotkey: &HotKeyConfig, is_modifier_pressed_prev: &mut bool| {
+        let modifier = hotkey.modifier.0;
+        match (
+            *is_modifier_pressed_prev,
+            unsafe { GetKeyState(modifier.into()) } < 0,
+        ) {
+            (true, false) => {
+                // alt key release
+                *is_modifier_pressed_prev = false;
+                unsafe {
+                    SendMessageW(
+                        hwnd,
+                        WM_USER_MODIFIER_KEYUP,
+                        WPARAM(modifier.into()),
+                        LPARAM(0),
+                    )
+                };
+            }
+            (false, true) => {
+                *is_modifier_pressed_prev = true;
+            }
+            _ => {}
+        }
+    };
     loop {
         thread::sleep(Duration::from_millis(100));
-        if !is_empty_blacklist {
+        if !config.switch_windows_blacklist.is_empty() {
             let fg_hwnd = get_foreground_window();
             if fg_hwnd != fg_hwnd_prev {
                 unsafe { SendMessageW(hwnd, WM_USER_FOREGROUND_CHANGE, WPARAM(0), LPARAM(0)) };
                 fg_hwnd_prev = fg_hwnd;
             }
         }
-
-        let is_modifer_pressed = unsafe { GetKeyState(hotkey.modifier.0.into()) } < 0;
-        match (is_modifer_pressed_prev, is_modifer_pressed) {
-            (true, false) => {
-                is_modifer_pressed_prev = false;
-                unsafe { SendMessageW(hwnd, WM_USER_MODIFIER_KEYUP, WPARAM(0), LPARAM(0)) };
-            }
-            (false, true) => {
-                is_modifer_pressed_prev = true;
-            }
-            _ => {}
+        watch_key(
+            &config.switch_windows_hotkey,
+            &mut is_switch_windows_modifier_pressed_prev,
+        );
+        if config.switch_apps_enable
+            && config.switch_windows_hotkey.modifier != config.switch_apps_hotkey.modifier
+        {
+            watch_key(
+                &config.switch_apps_hotkey,
+                &mut is_switch_apps_modifier_pressed_prev,
+            );
         }
     }
 }

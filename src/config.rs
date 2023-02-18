@@ -5,20 +5,26 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_WIN, VIRTUAL_KEY, VK_LCONTROL, VK_LMENU, VK_LWIN,
 };
 
-pub const HOTKEY_ID: i32 = 1;
+pub const SWITCH_WINDOWS_HOTKEY_ID: u32 = 1;
+pub const SWITCH_APPS_HOTKEY_ID: u32 = 2;
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub trayicon: bool,
-    pub hotkey: HotKeyConfig,
-    pub blacklist: HashSet<String>,
+    pub switch_windows_hotkey: HotKeyConfig,
+    pub switch_windows_blacklist: HashSet<String>,
+    pub switch_apps_enable: bool,
+    pub switch_apps_hotkey: HotKeyConfig,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             trayicon: true,
-            hotkey: HotKeyConfig::parse("alt + `").unwrap(),
-            blacklist: Default::default(),
+            switch_windows_hotkey: HotKeyConfig::parse("alt + `").unwrap(),
+            switch_windows_blacklist: Default::default(),
+            switch_apps_enable: true,
+            switch_apps_hotkey: HotKeyConfig::parse("alt + a").unwrap(),
         }
     }
 }
@@ -34,14 +40,19 @@ impl Config {
 
         if let Some(section) = ini_conf.section(Some("switch-windows")) {
             if let Some(v) = section.get("hotkey").and_then(HotKeyConfig::parse) {
-                conf.hotkey = v;
+                conf.switch_windows_hotkey = v;
             }
 
             if let Some(v) = section
                 .get("blacklist")
                 .map(|v| v.split(',').map(|v| v.trim().to_lowercase()).collect())
             {
-                conf.blacklist = v;
+                conf.switch_windows_blacklist = v;
+            }
+        }
+        if let Some(section) = ini_conf.section(Some("switch-apps")) {
+            if let Some(v) = section.get("hotkey").and_then(HotKeyConfig::parse) {
+                conf.switch_apps_hotkey = v;
             }
         }
         conf
@@ -67,7 +78,7 @@ impl HotKeyConfig {
         Self { modifier, code }
     }
 
-    pub fn modifier(&self) -> HOT_KEY_MODIFIERS {
+    pub fn hotkey_modifier(&self) -> HOT_KEY_MODIFIERS {
         match self.modifier {
             VK_LMENU => MOD_ALT,
             VK_LCONTROL => MOD_CONTROL,

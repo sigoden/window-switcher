@@ -27,7 +27,7 @@ use windows::{
 
 use std::{ffi::c_void, mem::size_of};
 
-use crate::{config::HOTKEY_ID, error, HotKeyConfig};
+use crate::{error, HotKeyConfig};
 pub const BUFFER_SIZE: usize = 1024;
 
 pub fn get_exe_path() -> Vec<u16> {
@@ -162,23 +162,23 @@ pub fn switch_to(hwnd: HWND) -> Result<()> {
     Ok(())
 }
 
-pub fn register_hotkey(hwnd: HWND, hotkey: &HotKeyConfig) -> Result<()> {
+pub fn register_hotkey(hwnd: HWND, id: u32, hotkey: &HotKeyConfig) -> Result<()> {
     unsafe {
         RegisterHotKey(
             hwnd,
-            HOTKEY_ID,
-            hotkey.modifier() | MOD_NOREPEAT,
+            id as i32,
+            hotkey.hotkey_modifier() | MOD_NOREPEAT,
             hotkey.code as u32,
         )
     }
     .ok()
-    .map_err(|e| anyhow!("Fail to register hotkey, {}", e))
+    .map_err(|e| anyhow!("Fail to register hotkey {id}, {e}"))
 }
 
-pub fn unregister_hotkey(hwnd: HWND) -> Result<()> {
-    unsafe { UnregisterHotKey(hwnd, HOTKEY_ID) }
+pub fn unregister_hotkey(hwnd: HWND, id: u32) -> Result<()> {
+    unsafe { UnregisterHotKey(hwnd, id as i32) }
         .ok()
-        .map_err(|e| anyhow!("Fail to unregister hotkey, {}", e))
+        .map_err(|e| anyhow!("Fail to unregister hotkey {id}, {e}"))
 }
 
 #[cfg(target_arch = "x86")]

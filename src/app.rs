@@ -173,7 +173,7 @@ impl App {
     fn handle_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Result<LRESULT> {
         match msg {
             WM_USER_TRAYICON => {
-                let app = retrive_app(hwnd)?;
+                let app = get_app(hwnd)?;
                 if let Some(trayicon) = app.trayicon.as_mut() {
                     let keycode = lparam.0 as u32;
                     if keycode == WM_LBUTTONUP || keycode == WM_RBUTTONUP {
@@ -183,7 +183,7 @@ impl App {
                 return Ok(LRESULT(0));
             }
             WM_USER_MODIFIER_KEYUP => {
-                let app = retrive_app(hwnd)?;
+                let app = get_app(hwnd)?;
                 let modifier = wparam.0 as u16;
                 if modifier == app.config.switch_windows_hotkey.modifier.0 {
                     app.switch_windows_modifier_released = true;
@@ -198,7 +198,7 @@ impl App {
                 if exe.is_empty() {
                     return Ok(LRESULT(0));
                 };
-                let app = retrive_app(hwnd)?;
+                let app = get_app(hwnd)?;
                 let config = &app.config;
                 match (
                     config.switch_windows_blacklist.contains(&exe),
@@ -231,7 +231,7 @@ impl App {
             }
             WM_HOTKEY => {
                 debug!("Handle msg=WM_HOTKEY");
-                let app = retrive_app(hwnd)?;
+                let app = get_app(hwnd)?;
                 let hotkey_id = wparam.0 as u32;
                 match hotkey_id {
                     SWITCH_WINDOWS_HOTKEY_ID => {
@@ -253,13 +253,13 @@ impl App {
                 if kind == 0 {
                     match id {
                         IDM_EXIT => {
-                            if let Ok(app) = retrive_app(hwnd) {
+                            if let Ok(app) = get_app(hwnd) {
                                 unsafe { drop(Box::from_raw(app)) }
                             }
                             unsafe { PostQuitMessage(0) }
                         }
                         IDM_STARTUP => {
-                            let app = retrive_app(hwnd)?;
+                            let app = get_app(hwnd)?;
                             app.startup.toggle()?;
                         }
                         _ => {}
@@ -267,7 +267,7 @@ impl App {
                 }
             }
             _ if msg == *S_U_TASKBAR_RESTART => {
-                let app = retrive_app(hwnd)?;
+                let app = get_app(hwnd)?;
                 app.set_trayicon()?;
             }
             _ => {}
@@ -276,7 +276,7 @@ impl App {
     }
 }
 
-fn retrive_app(hwnd: HWND) -> Result<&'static mut App> {
+fn get_app(hwnd: HWND) -> Result<&'static mut App> {
     unsafe {
         let ptr = check_error(|| get_window_ptr(hwnd))
             .map_err(|err| anyhow!("Failed to get window ptr, {err}"))?;

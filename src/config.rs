@@ -50,7 +50,7 @@ impl Config {
             if let Some(level) = section.get("level").and_then(|v| v.parse().ok()) {
                 conf.log_level = level;
             }
-            if let Some(path) = section.get("file") {
+            if let Some(path) = section.get("path") {
                 if !path.trim().is_empty() {
                     let mut path = PathBuf::from(path);
                     if !path.is_absolute() {

@@ -42,7 +42,6 @@ impl Switcher {
                 if windows_len > 2 {
                     if let Some(state) = self.switch_windows_state.as_ref() {
                         debug!("{state:?}");
-                        state_id = state.id;
                         if state.path == module_path {
                             if back {
                                 if state.id != current_id {
@@ -52,11 +51,9 @@ impl Switcher {
                                         index = i;
                                     }
                                 }
-                                if windows[index] == state_id {
-                                    state_id = current_id;
-                                }
                             } else {
                                 index = (state.index + 1).min(windows_len - 1);
+                                state_id = state.id;
                             }
                         }
                     }
@@ -89,7 +86,6 @@ impl Switcher {
         if module_paths_len > 2 {
             if let Some(state) = self.switch_apps_state.as_ref() {
                 debug!("{state:?}");
-                state_path = &state.path;
                 if back {
                     if &state.path != current_path {
                         if let Some((i, _)) = module_paths
@@ -100,11 +96,9 @@ impl Switcher {
                             index = i;
                         }
                     }
-                    if module_paths[index] == state_path {
-                        state_path = current_path;
-                    }
                 } else {
                     index = (state.index + 1).min(module_paths.len() - 1);
+                    state_path = &state.path;
                 }
             }
         }

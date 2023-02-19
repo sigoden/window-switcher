@@ -16,7 +16,7 @@ Easily switch windows of the same application with a hotkey (``` alt + ` ```) on
 
 <details>
 <summary>
-Experimental switching app
+Experimental switching apps
 </summary>
 
 - Press and hold the `alt` key, tap `a` to cycle through apps.

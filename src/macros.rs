@@ -6,7 +6,7 @@ use windows::Win32::UI::WindowsAndMessaging::{MessageBoxA, MB_ICONERROR, MB_OK};
 
 pub fn message_box<T: Display>(text: T) {
     let lp_text = CString::new(text.to_string()).unwrap();
-    let lp_caption = CString::new("Error").unwrap();
+    let lp_caption = CString::new("Windows Switcher Error").unwrap();
     unsafe {
         MessageBoxA(
             None,

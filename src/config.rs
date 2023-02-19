@@ -1,6 +1,6 @@
 use std::{collections::HashSet, path::PathBuf};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use ini::Ini;
 use log::LevelFilter;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -9,18 +9,15 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 
 use crate::utils::get_exe_folder;
 
-pub const SWITCH_WINDOWS_HOTKEY_ID: u32 = 1;
-pub const SWITCH_APPS_HOTKEY_ID: u32 = 2;
-
 #[derive(Debug, Clone)]
 pub struct Config {
     pub trayicon: bool,
     pub log_level: LevelFilter,
     pub log_file: Option<PathBuf>,
-    pub switch_windows_hotkey: HotKeyConfig,
+    pub switch_windows_hotkey: Hotkey,
     pub switch_windows_blacklist: HashSet<String>,
     pub switch_apps_enable: bool,
-    pub switch_apps_hotkey: HotKeyConfig,
+    pub switch_apps_hotkey: Hotkey,
 }
 
 impl Default for Config {
@@ -29,10 +26,10 @@ impl Default for Config {
             trayicon: true,
             log_level: LevelFilter::Info,
             log_file: None,
-            switch_windows_hotkey: HotKeyConfig::parse("alt + `").unwrap(),
+            switch_windows_hotkey: Hotkey::create(1, "switch windows", "alt + `").unwrap(),
             switch_windows_blacklist: Default::default(),
             switch_apps_enable: true,
-            switch_apps_hotkey: HotKeyConfig::parse("alt + a").unwrap(),
+            switch_apps_hotkey: Hotkey::create(2, "switch apps", "alt + a").unwrap(),
         }
     }
 }
@@ -63,8 +60,8 @@ impl Config {
         }
 
         if let Some(section) = ini_conf.section(Some("switch-windows")) {
-            if let Some(v) = section.get("hotkey").and_then(HotKeyConfig::parse) {
-                conf.switch_windows_hotkey = v;
+            if let Some(v) = section.get("hotkey") {
+                conf.switch_windows_hotkey = Hotkey::create(1, "switch windows", v)?;
             }
 
             if let Some(v) = section
@@ -75,8 +72,8 @@ impl Config {
             }
         }
         if let Some(section) = ini_conf.section(Some("switch-apps")) {
-            if let Some(v) = section.get("hotkey").and_then(HotKeyConfig::parse) {
-                conf.switch_apps_hotkey = v;
+            if let Some(v) = section.get("hotkey") {
+                conf.switch_apps_hotkey = Hotkey::create(2, "switch apps", v)?;
             }
         }
         Ok(conf)
@@ -92,17 +89,26 @@ impl Config {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HotKeyConfig {
+pub struct Hotkey {
+    pub id: u32,
+    pub name: String,
     pub modifier: VIRTUAL_KEY,
     pub code: u16,
 }
 
-impl HotKeyConfig {
-    pub fn new(modifier: VIRTUAL_KEY, code: u16) -> Self {
-        Self { modifier, code }
+impl Hotkey {
+    pub fn create(id: u32, name: &str, value: &str) -> Result<Self> {
+        let (modifier, code) =
+            Self::parse(value).ok_or_else(|| anyhow!("Invalid {name} hotkey"))?;
+        Ok(Self {
+            id,
+            name: name.to_string(),
+            modifier,
+            code,
+        })
     }
 
-    pub fn hotkey_modifier(&self) -> HOT_KEY_MODIFIERS {
+    pub fn modifiers(&self) -> HOT_KEY_MODIFIERS {
         match self.modifier {
             VK_LMENU => MOD_ALT,
             VK_LCONTROL => MOD_CONTROL,
@@ -111,7 +117,7 @@ impl HotKeyConfig {
         }
     }
 
-    pub fn parse(value: &str) -> Option<Self> {
+    pub fn parse(value: &str) -> Option<(VIRTUAL_KEY, u16)> {
         let value = value.to_ascii_lowercase().replace(' ', "");
         let keys: Vec<&str> = value.split('+').collect();
         if keys.len() != 2 {
@@ -214,7 +220,7 @@ impl HotKeyConfig {
             "~" | "`" => 0xc0,
             _ => return None,
         };
-        Some(Self { modifier, code })
+        Some((modifier, code))
     }
 }
 
@@ -224,13 +230,7 @@ mod tests {
 
     #[test]
     fn test_hotkey() {
-        assert_eq!(
-            HotKeyConfig::parse("alt + `"),
-            Some(HotKeyConfig::new(VK_LMENU, 0xc0))
-        );
-        assert_eq!(
-            HotKeyConfig::parse("alt + tab"),
-            Some(HotKeyConfig::new(VK_LMENU, 0x09))
-        );
+        assert_eq!(Hotkey::parse("alt + `"), Some((VK_LMENU, 0xc0)));
+        assert_eq!(Hotkey::parse("alt + tab"), Some((VK_LMENU, 0x09)));
     }
 }

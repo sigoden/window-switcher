@@ -1,4 +1,4 @@
-use crate::config::{SWITCH_APPS_HOTKEY_ID, SWITCH_WINDOWS_HOTKEY_ID};
+use crate::config::{Config, Hotkey};
 use crate::startup::Startup;
 use crate::switcher::Switcher;
 use crate::trayicon::TrayIcon;
@@ -6,7 +6,6 @@ use crate::utils::{
     check_error, get_foreground_window, get_window_exe, get_window_ptr, register_hotkey,
     set_window_ptr, unregister_hotkey, CheckError,
 };
-use crate::{Config, HotKeyConfig};
 
 use anyhow::{anyhow, Result};
 use once_cell::sync::Lazy;
@@ -19,9 +18,9 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, PostQuitMessage,
-    RegisterClassW, RegisterWindowMessageW, SendMessageW, TranslateMessage, CREATESTRUCTW,
-    CW_USEDEFAULT, MSG, WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY,
-    WM_LBUTTONUP, WM_RBUTTONUP, WNDCLASSW,
+    RegisterClassW, RegisterWindowMessageW, SendMessageW, TranslateMessage, CW_USEDEFAULT, MSG,
+    WINDOW_EX_STYLE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY, WM_LBUTTONUP, WM_RBUTTONUP,
+    WNDCLASSW,
 };
 
 pub const WM_USER_TRAYICON: u32 = 6000;
@@ -33,6 +32,7 @@ pub const IDM_STARTUP: u32 = 2;
 pub const NAME: PCWSTR = w!("Windows Switcher");
 
 pub fn start(config: &Config) -> Result<()> {
+    debug!("start config={:?}", config);
     App::start(config)
 }
 
@@ -54,32 +54,26 @@ pub struct App {
 
 impl App {
     pub fn start(config: &Config) -> Result<()> {
-        debug!("App::start config={:?}", config);
+        let hwnd = Self::create_window()?;
 
-        let hinstance = unsafe { GetModuleHandleW(None) }
-            .map_err(|err| anyhow!("Failed to get current module handle, {err}"))?;
-
-        let window_class = WNDCLASSW {
-            hInstance: hinstance,
-            lpszClassName: NAME,
-            lpfnWndProc: Some(App::window_proc),
-            ..Default::default()
-        };
-
-        let atom = unsafe { RegisterClassW(&window_class) }
-            .check_error()
-            .map_err(|err| anyhow!("Failed to register class, {err}"))?;
+        let is_empty_blacklist = config.switch_windows_blacklist.is_empty();
+        if is_empty_blacklist {
+            register_hotkey(hwnd, &config.switch_windows_hotkey)?;
+        }
+        if config.switch_apps_enable {
+            register_hotkey(hwnd, &config.switch_apps_hotkey)?;
+        }
 
         let trayicon = match config.trayicon {
             true => Some(TrayIcon::create()),
             false => None,
         };
+
         let startup = Startup::init()?;
         let switcher = Switcher::new();
-        let is_empty_blacklist = config.switch_windows_blacklist.is_empty();
 
-        let app = App {
-            hwnd: HWND::default(),
+        let mut app = App {
+            hwnd,
             trayicon,
             startup,
             switcher,
@@ -89,37 +83,11 @@ impl App {
             switch_apps_modifier_released: true,
         };
 
-        let app_ptr = Box::into_raw(Box::new(app));
+        app.set_trayicon()?;
 
-        let hwnd = unsafe {
-            CreateWindowExW(
-                WINDOW_EX_STYLE(0),
-                PCWSTR(atom as *mut u16),
-                NAME,
-                WINDOW_STYLE(0),
-                CW_USEDEFAULT,
-                CW_USEDEFAULT,
-                CW_USEDEFAULT,
-                CW_USEDEFAULT,
-                None,
-                None,
-                hinstance,
-                Some(app_ptr as *const _),
-            )
-        }
-        .check_error()
-        .map_err(|err| anyhow!("Failed to create windows, {err}"))?;
-
-        if is_empty_blacklist {
-            register_hotkey(
-                hwnd,
-                SWITCH_WINDOWS_HOTKEY_ID,
-                &config.switch_windows_hotkey,
-            )?;
-        }
-        if config.switch_apps_enable {
-            register_hotkey(hwnd, SWITCH_APPS_HOTKEY_ID, &config.switch_apps_hotkey)?;
-        }
+        let app_ptr = Box::into_raw(Box::new(app)) as _;
+        check_error(|| set_window_ptr(hwnd, app_ptr))
+            .map_err(|err| anyhow!("Failed to set window ptr, {err}"))?;
 
         let config = config.clone();
         thread::spawn(move || {
@@ -144,6 +112,42 @@ impl App {
         }
 
         Ok(())
+    }
+
+    fn create_window() -> Result<HWND> {
+        let hinstance = unsafe { GetModuleHandleW(None) }
+            .map_err(|err| anyhow!("Failed to get current module handle, {err}"))?;
+
+        let window_class = WNDCLASSW {
+            hInstance: hinstance,
+            lpszClassName: NAME,
+            lpfnWndProc: Some(App::window_proc),
+            ..Default::default()
+        };
+
+        let atom = unsafe { RegisterClassW(&window_class) }
+            .check_error()
+            .map_err(|err| anyhow!("Failed to register class, {err}"))?;
+
+        let hwnd = unsafe {
+            CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                PCWSTR(atom as *mut u16),
+                NAME,
+                WINDOW_STYLE(0),
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                CW_USEDEFAULT,
+                None,
+                None,
+                hinstance,
+                None,
+            )
+        }
+        .check_error()
+        .map_err(|err| anyhow!("Failed to create windows, {err}"))?;
+        Ok(hwnd)
     }
 
     fn set_trayicon(&mut self) -> Result<()> {
@@ -202,15 +206,11 @@ impl App {
                     config.switch_windows_blacklist.contains(&exe),
                     app.enable_hotkey,
                 ) {
-                    (false, false) => match register_hotkey(
-                        hwnd,
-                        SWITCH_WINDOWS_HOTKEY_ID,
-                        &config.switch_windows_hotkey,
-                    ) {
+                    (false, false) => match register_hotkey(hwnd, &config.switch_windows_hotkey) {
                         Ok(_) => app.enable_hotkey = true,
                         Err(err) => error!("{err}"),
                     },
-                    (true, true) => match unregister_hotkey(hwnd, SWITCH_WINDOWS_HOTKEY_ID) {
+                    (true, true) => match unregister_hotkey(hwnd, &config.switch_windows_hotkey) {
                         Ok(_) => app.enable_hotkey = false,
                         Err(err) => error!("{err}"),
                     },
@@ -219,29 +219,18 @@ impl App {
             }
             WM_CREATE => {
                 debug!("Handle msg=WM_CREATE");
-                let app: &mut App = unsafe {
-                    let create_struct: &mut CREATESTRUCTW = &mut *(lparam.0 as *mut _);
-                    set_window_ptr(hwnd, create_struct.lpCreateParams as _);
-                    &mut *(create_struct.lpCreateParams as *mut _)
-                };
-                app.hwnd = hwnd;
-                app.set_trayicon()?;
             }
             WM_HOTKEY => {
                 debug!("Handle msg=WM_HOTKEY");
                 let app = get_app(hwnd)?;
                 let hotkey_id = wparam.0 as u32;
-                match hotkey_id {
-                    SWITCH_WINDOWS_HOTKEY_ID => {
-                        app.switcher
-                            .next_window(app.switch_windows_modifier_released)?;
-                        app.switch_windows_modifier_released = false;
-                    }
-                    SWITCH_APPS_HOTKEY_ID => {
-                        app.switcher.next_app(app.switch_apps_modifier_released)?;
-                        app.switch_apps_modifier_released = false;
-                    }
-                    _ => {}
+                if hotkey_id == app.config.switch_windows_hotkey.id {
+                    app.switcher
+                        .next_window(app.switch_windows_modifier_released)?;
+                    app.switch_windows_modifier_released = false;
+                } else if hotkey_id == app.config.switch_apps_hotkey.id {
+                    app.switcher.next_app(app.switch_apps_modifier_released)?;
+                    app.switch_apps_modifier_released = false;
                 }
             }
             WM_COMMAND => {
@@ -287,7 +276,7 @@ pub fn watch(hwnd: HWND, config: Config) {
     let mut fg_hwnd_prev = HWND::default();
     let mut is_switch_windows_modifier_pressed_prev: bool = false;
     let mut is_switch_apps_modifier_pressed_prev: bool = false;
-    let watch_key = |hotkey: &HotKeyConfig, is_modifier_pressed_prev: &mut bool| {
+    let watch_key = |hotkey: &Hotkey, is_modifier_pressed_prev: &mut bool| {
         let modifier = hotkey.modifier.0;
         match (
             *is_modifier_pressed_prev,

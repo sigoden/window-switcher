@@ -11,4 +11,4 @@ pub mod macros;
 extern crate log;
 
 pub use crate::app::start;
-pub use crate::config::{Config, HotKeyConfig};
+pub use crate::config::Config;

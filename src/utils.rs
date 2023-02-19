@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use windows::core::Error;
+use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOPMOST};
 use windows::{
     core::PWSTR,
     Win32::{
@@ -28,7 +29,7 @@ use windows::{
 use std::path::PathBuf;
 use std::{ffi::c_void, mem::size_of};
 
-use crate::HotKeyConfig;
+use crate::config::Hotkey;
 pub const BUFFER_SIZE: usize = 1024;
 
 pub fn get_exe_folder() -> Result<PathBuf> {
@@ -102,6 +103,11 @@ pub fn is_window_visible(hwnd: HWND) -> bool {
     ret.as_bool()
 }
 
+pub fn is_window_fixed_top(hwnd: HWND) -> bool {
+    let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
+    ex_style & WS_EX_TOPMOST.0 != 0
+}
+
 pub fn is_window_cloaked(hwnd: HWND) -> bool {
     let mut cloaked = 0u32;
     let _ = unsafe {
@@ -171,23 +177,23 @@ pub fn switch_to(hwnd: HWND) -> Result<()> {
     Ok(())
 }
 
-pub fn register_hotkey(hwnd: HWND, id: u32, hotkey: &HotKeyConfig) -> Result<()> {
+pub fn register_hotkey(hwnd: HWND, hotkey: &Hotkey) -> Result<()> {
     unsafe {
         RegisterHotKey(
             hwnd,
-            id as i32,
-            hotkey.hotkey_modifier() | MOD_NOREPEAT,
+            hotkey.id as i32,
+            hotkey.modifiers() | MOD_NOREPEAT,
             hotkey.code as u32,
         )
     }
     .ok()
-    .map_err(|e| anyhow!("Fail to register hotkey {id}, {e}"))
+    .map_err(|e| anyhow!("Fail to register {} hotkey, {e}", hotkey.name))
 }
 
-pub fn unregister_hotkey(hwnd: HWND, id: u32) -> Result<()> {
-    unsafe { UnregisterHotKey(hwnd, id as i32) }
+pub fn unregister_hotkey(hwnd: HWND, hotkey: &Hotkey) -> Result<()> {
+    unsafe { UnregisterHotKey(hwnd, hotkey.id as i32) }
         .ok()
-        .map_err(|e| anyhow!("Fail to unregister hotkey {id}, {e}"))
+        .map_err(|e| anyhow!("Fail to unregister {} hotkey, {e}", hotkey.name))
 }
 
 #[cfg(target_arch = "x86")]

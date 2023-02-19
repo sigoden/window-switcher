@@ -16,7 +16,7 @@ Easily switch windows of the same application with a hotkey (``` alt + ` ```) on
 
 <details>
 <summary>
-Experimental switching app
+Experimental switching apps
 </summary>
 
 - Press and hold the `alt` key, tap `a` to cycle through apps.
@@ -50,13 +50,5 @@ blacklist =
 enable = yes
 
 # Hotkey to switch apps
-hotkey = alt+a  # Unable to register system shortcuts such as `alt+tab`
-
-[log]
-
-# Log level can be one of off,error,warn,info,debug,trace.
-level = info 
-
-# Log file
-file = 
+hotkey = alt+a
 ```

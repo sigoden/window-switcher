@@ -1,6 +1,6 @@
 use crate::utils::{
     get_foreground_window, get_module_path, get_window_pid, is_iconic, is_popup_window,
-    is_special_window, is_window_cloaked, is_window_visible, switch_to,
+    is_special_window, is_window_cloaked, is_window_fixed_top, is_window_visible, switch_to,
 };
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
@@ -42,7 +42,6 @@ impl Switcher {
                 if windows_len > 2 {
                     if let Some(state) = self.switch_windows_state.as_ref() {
                         debug!("{state:?}");
-                        state_id = state.id;
                         if state.path == module_path {
                             if back {
                                 if state.id != current_id {
@@ -52,11 +51,9 @@ impl Switcher {
                                         index = i;
                                     }
                                 }
-                                if windows[index] == state_id {
-                                    state_id = current_id;
-                                }
                             } else {
                                 index = (state.index + 1).min(windows_len - 1);
+                                state_id = state.id;
                             }
                         }
                     }
@@ -89,7 +86,6 @@ impl Switcher {
         if module_paths_len > 2 {
             if let Some(state) = self.switch_apps_state.as_ref() {
                 debug!("{state:?}");
-                state_path = &state.path;
                 if back {
                     if &state.path != current_path {
                         if let Some((i, _)) = module_paths
@@ -100,11 +96,9 @@ impl Switcher {
                             index = i;
                         }
                     }
-                    if module_paths[index] == state_path {
-                        state_path = current_path;
-                    }
                 } else {
                     index = (state.index + 1).min(module_paths.len() - 1);
+                    state_path = &state.path;
                 }
             }
         }
@@ -120,9 +114,9 @@ impl Switcher {
         Ok(true)
     }
 
-    fn get_windows(no_minimal: bool) -> Result<IndexMap<String, Vec<isize>>> {
+    fn get_windows(is_switch_apps: bool) -> Result<IndexMap<String, Vec<isize>>> {
         let mut data = EnumWindowsData {
-            no_minimal,
+            is_switch_apps,
             windows: Default::default(),
         };
         unsafe { EnumWindows(Some(enum_window), LPARAM(&mut data as *mut _ as isize)).ok() }
@@ -140,13 +134,13 @@ struct SwitcherState {
 
 #[derive(Debug)]
 struct EnumWindowsData {
-    no_minimal: bool,
+    is_switch_apps: bool,
     windows: IndexMap<String, Vec<isize>>,
 }
 
 extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let state: &mut EnumWindowsData = unsafe { &mut *(lparam.0 as *mut _) };
-    if state.no_minimal && is_iconic(hwnd) {
+    if state.is_switch_apps && (is_iconic(hwnd) || is_window_fixed_top(hwnd)) {
         return BOOL(1);
     }
     if !is_window_visible(hwnd)

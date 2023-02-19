@@ -1,17 +1,14 @@
-use std::ffi::CString;
-use std::fmt::Display;
+use windows::core::PCWSTR;
+use windows::w;
+use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
 
-use windows::core::PCSTR;
-use windows::Win32::UI::WindowsAndMessaging::{MessageBoxA, MB_ICONERROR, MB_OK};
-
-pub fn message_box<T: Display>(text: T) {
-    let lp_text = CString::new(text.to_string()).unwrap();
-    let lp_caption = CString::new("Windows Switcher Error").unwrap();
+pub fn message_box(text: &str) {
+    let text = text.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
     unsafe {
-        MessageBoxA(
+        MessageBoxW(
             None,
-            PCSTR(lp_text.as_ptr() as *const u8),
-            PCSTR(lp_caption.as_ptr() as *const u8),
+            PCWSTR(text.as_ptr() as _),
+            w!("Windows Switcher Error"),
             MB_OK | MB_ICONERROR,
         )
     };
@@ -20,6 +17,6 @@ pub fn message_box<T: Display>(text: T) {
 #[macro_export]
 macro_rules! alert {
     ($($arg:tt)*) => {
-        $crate::macros::message_box(format!($($arg)*))
+        $crate::macros::message_box(&format!($($arg)*))
     };
 }

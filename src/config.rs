@@ -61,7 +61,9 @@ impl Config {
 
         if let Some(section) = ini_conf.section(Some("switch-windows")) {
             if let Some(v) = section.get("hotkey") {
-                conf.switch_windows_hotkey = Hotkey::create(1, "switch windows", v)?;
+                if !v.trim().is_empty() {
+                    conf.switch_windows_hotkey = Hotkey::create(1, "switch windows", v)?;
+                }
             }
 
             if let Some(v) = section
@@ -73,7 +75,9 @@ impl Config {
         }
         if let Some(section) = ini_conf.section(Some("switch-apps")) {
             if let Some(v) = section.get("hotkey") {
-                conf.switch_apps_hotkey = Hotkey::create(2, "switch apps", v)?;
+                if !v.trim().is_empty() {
+                    conf.switch_apps_hotkey = Hotkey::create(2, "switch apps", v)?;
+                }
             }
         }
         Ok(conf)

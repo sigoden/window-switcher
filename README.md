@@ -45,7 +45,7 @@ hotkey = alt+a
 
 ## Experimental switching apps
 
-- Add `windwos-switcher.ini` with contents
+- Create a `windows-switcher.ini` file in the same directory as `windows-switcher.exe`.
 
 ```ini
 [switch-apps]

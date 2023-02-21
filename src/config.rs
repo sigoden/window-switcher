@@ -74,6 +74,9 @@ impl Config {
             }
         }
         if let Some(section) = ini_conf.section(Some("switch-apps")) {
+            if let Some(v) = section.get("enable").and_then(Config::to_bool) {
+                conf.switch_apps_enable = v;
+            }
             if let Some(v) = section.get("hotkey") {
                 if !v.trim().is_empty() {
                     conf.switch_apps_hotkey = Hotkey::create(2, "switch apps", v)?;

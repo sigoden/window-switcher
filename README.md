@@ -52,6 +52,9 @@ hotkey = alt+a
 
 # Whether to enable switching apps
 enable = yes
+
+# Hotkey to switch apps
+hotkey = alt+a
 ```
 
 - Press and hold the `alt` key, tap `a` to cycle through apps.

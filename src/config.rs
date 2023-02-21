@@ -28,7 +28,7 @@ impl Default for Config {
             log_file: None,
             switch_windows_hotkey: Hotkey::create(1, "switch windows", "alt + `").unwrap(),
             switch_windows_blacklist: Default::default(),
-            switch_apps_enable: true,
+            switch_apps_enable: false,
             switch_apps_hotkey: Hotkey::create(2, "switch apps", "alt + a").unwrap(),
         }
     }

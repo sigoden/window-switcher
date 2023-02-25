@@ -1,7 +1,6 @@
 mod app;
 mod config;
 mod startup;
-mod switcher;
 mod trayicon;
 
 pub mod utils;

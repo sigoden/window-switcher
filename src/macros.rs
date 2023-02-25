@@ -2,8 +2,10 @@ use windows::core::PCWSTR;
 use windows::w;
 use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
 
+use crate::utils::to_wstring;
+
 pub fn message_box(text: &str) {
-    let text = text.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+    let text = to_wstring(text);
     unsafe {
         MessageBoxW(
             None,

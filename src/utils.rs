@@ -2,11 +2,13 @@ use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use windows::core::{Error, PCWSTR};
 use windows::Win32::Foundation::{BOOL, LPARAM};
+use windows::Win32::System::Threading::AttachThreadInput;
 use windows::Win32::UI::Shell::{
     SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowLongPtrW, GWL_EXSTYLE, HICON, WS_EX_TOPMOST,
+    BringWindowToTop, EnumWindows, GetWindowLongPtrW, ShowWindow, GWL_EXSTYLE, HICON, SW_SHOW,
+    WS_EX_TOPMOST,
 };
 use windows::{
     core::PWSTR,
@@ -27,7 +29,7 @@ use windows::{
                 GetAncestor, GetForegroundWindow, GetLastActivePopup, GetTitleBarInfo,
                 GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, SetForegroundWindow,
                 ShowWindowAsync, GA_ROOTOWNER, GWL_USERDATA, SW_RESTORE, SW_SHOWMAXIMIZED,
-                SW_SHOWNORMAL, TITLEBARINFO,
+                TITLEBARINFO,
             },
         },
     },
@@ -101,10 +103,6 @@ pub fn is_iconic(hwnd: HWND) -> bool {
     unsafe { IsIconic(hwnd) }.as_bool()
 }
 
-pub fn is_zoombed(hwnd: HWND) -> bool {
-    unsafe { IsZoomed(hwnd) }.as_bool()
-}
-
 pub fn is_window_visible(hwnd: HWND) -> bool {
     let ret = unsafe { IsWindowVisible(hwnd) };
     ret.as_bool()
@@ -164,21 +162,28 @@ pub fn get_foreground_window() -> HWND {
     unsafe { GetForegroundWindow() }
 }
 
-pub fn switch_to(hwnd: HWND) -> Result<()> {
-    if hwnd == get_foreground_window() {
+pub fn set_foregound_window(hwnd: HWND) -> Result<()> {
+    let fg_hwnd = get_foreground_window();
+    if hwnd == fg_hwnd {
         return Ok(());
     }
-    if let Err(err) = unsafe { SetForegroundWindow(hwnd) }.ok() {
-        error!("Failed to set foreground {hwnd:?}, {err}");
-    }
-
     unsafe {
+        let thread1 = GetWindowThreadProcessId(fg_hwnd, None);
+        let thread2 = GetWindowThreadProcessId(hwnd, None);
+        if thread1 != thread2 {
+            AttachThreadInput(thread1, thread2, BOOL(1));
+            SetForegroundWindow(hwnd);
+            BringWindowToTop(hwnd);
+            ShowWindow(hwnd, SW_SHOW);
+            AttachThreadInput(thread1, thread2, BOOL(0));
+        } else {
+            SetForegroundWindow(hwnd);
+            ShowWindow(hwnd, SW_SHOW);
+        }
         if is_iconic(hwnd) {
             ShowWindowAsync(hwnd, SW_RESTORE);
-        } else if is_zoombed(hwnd) {
+        } else if IsZoomed(hwnd).as_bool() {
             ShowWindowAsync(hwnd, SW_SHOWMAXIMIZED);
-        } else {
-            ShowWindowAsync(hwnd, SW_SHOWNORMAL);
         }
     };
     Ok(())

@@ -21,14 +21,14 @@ use windows::Win32::Graphics::Gdi::{
     RDW_INVALIDATE,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
+use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, SetFocus};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, DrawIconEx, GetMessageW,
     GetWindowLongPtrW, LoadCursorW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
     SendMessageW, SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage,
-    CW_USEDEFAULT, DI_NORMAL, GWL_STYLE, HICON, HWND_TOPMOST, IDC_ARROW, MSG, SET_WINDOW_POS_FLAGS,
-    SW_HIDE, SW_SHOW, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY, WM_LBUTTONUP, WM_PAINT,
-    WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
+    CW_USEDEFAULT, DI_NORMAL, GWL_STYLE, HICON, HWND_TOPMOST, IDC_ARROW, MSG, SWP_SHOWWINDOW,
+    SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY, WM_LBUTTONUP, WM_PAINT, WM_RBUTTONUP,
+    WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
 };
 
 pub const WM_USER_TRAYICON: u32 = 6000;
@@ -375,12 +375,12 @@ impl App {
         let x = monitor_rect.left + (monitor_width - window_width) / 2;
         let y = monitor_rect.top + (monitor_height - window_height) / 2;
 
-        // Change busy cursor to array cursor
-        if let Ok(hcursor) = unsafe { LoadCursorW(HINSTANCE(0), IDC_ARROW) } {
-            unsafe { SetCursor(hcursor) };
-        }
-
         unsafe {
+            // Change busy cursor to array cursor
+            if let Ok(hcursor) = LoadCursorW(HINSTANCE(0), IDC_ARROW) {
+                SetCursor(hcursor);
+            }
+            SetFocus(hwnd);
             SetWindowPos(
                 hwnd,
                 Some(HWND_TOPMOST),
@@ -388,10 +388,9 @@ impl App {
                 y,
                 window_width,
                 window_height,
-                SET_WINDOW_POS_FLAGS(0),
-            )
-        };
-        unsafe { ShowWindow(hwnd, SW_SHOW) };
+                SWP_SHOWWINDOW,
+            );
+        }
 
         self.switch_apps_state = Some(SwtichAppsState {
             apps,

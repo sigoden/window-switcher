@@ -2,7 +2,9 @@ use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use windows::core::{Error, PCWSTR};
 use windows::Win32::Foundation::{BOOL, LPARAM};
-use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON};
+use windows::Win32::UI::Shell::{
+    SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowLongPtrW, GWL_EXSTYLE, HICON, WS_EX_TOPMOST,
 };
@@ -184,15 +186,17 @@ pub fn switch_to(hwnd: HWND) -> Result<()> {
 
 pub fn get_module_icon(module_path: &str) -> Option<HICON> {
     let path = to_wstring(module_path);
+    let path = PCWSTR(path.as_ptr());
+
     let mut shfi: SHFILEINFOW = Default::default();
     let size = size_of::<SHFILEINFOW>() as u32;
     let result = unsafe {
         SHGetFileInfoW(
-            PCWSTR(path.as_ptr()),
+            path,
             Default::default(),
             Some(&mut shfi),
             size,
-            SHGFI_ICON,
+            SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES,
         )
     };
     if result == 0 {

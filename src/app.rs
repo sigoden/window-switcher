@@ -37,8 +37,9 @@ pub const WM_USER_MODIFIER_KEYUP: u32 = 6001;
 pub const WM_USER_FOREGROUND_CHANGE: u32 = 6002;
 pub const IDM_EXIT: u32 = 1;
 pub const IDM_STARTUP: u32 = 2;
-pub const BG_COLOR: COLORREF = COLORREF(0xffffff);
-pub const FG_COLOR: COLORREF = COLORREF(0x000000);
+pub const BG_COLOR: COLORREF = COLORREF(0x4c4c4c);
+pub const FG_COLOR: COLORREF = COLORREF(0x3b3b3b);
+pub const ICON_SIZE: i32 = 64;
 
 pub const NAME: PCWSTR = w!("Windows Switcher");
 
@@ -378,8 +379,9 @@ impl App {
         let monitor_height = monitor_rect.bottom - monitor_rect.top;
         let window_border_size = 8;
         let icon_border_size = 4;
-        let icon_size =
-            ((monitor_width - 2 * window_border_size) / num_apps - icon_border_size * 2).min(64);
+        let icon_size = ((monitor_width - 2 * window_border_size) / num_apps
+            - icon_border_size * 2)
+            .min(ICON_SIZE);
         let item_size = icon_size + icon_border_size * 2;
         let window_width = item_size * num_apps + window_border_size * 2;
         let window_height = item_size + window_border_size * 2;

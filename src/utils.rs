@@ -1,6 +1,13 @@
 use anyhow::{anyhow, Result};
-use windows::core::Error;
-use windows::Win32::UI::WindowsAndMessaging::{GetWindowLongPtrW, GWL_EXSTYLE, WS_EX_TOPMOST};
+use indexmap::IndexMap;
+use windows::core::{Error, PCWSTR};
+use windows::Win32::Foundation::{BOOL, LPARAM};
+use windows::Win32::UI::Shell::{
+    SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GetWindowLongPtrW, GWL_EXSTYLE, HICON, WS_EX_TOPMOST,
+};
 use windows::{
     core::PWSTR,
     Win32::{
@@ -103,7 +110,7 @@ pub fn is_window_visible(hwnd: HWND) -> bool {
     ret.as_bool()
 }
 
-pub fn is_window_fixed_top(hwnd: HWND) -> bool {
+pub fn is_window_topmost(hwnd: HWND) -> bool {
     let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
     ex_style & WS_EX_TOPMOST.0 != 0
 }
@@ -175,6 +182,61 @@ pub fn switch_to(hwnd: HWND) -> Result<()> {
         }
     };
     Ok(())
+}
+
+pub fn get_module_icon(module_path: &str) -> Option<HICON> {
+    let path = to_wstring(module_path);
+    let path = PCWSTR(path.as_ptr());
+
+    let mut shfi: SHFILEINFOW = Default::default();
+    let size = size_of::<SHFILEINFOW>() as u32;
+    let result = unsafe {
+        SHGetFileInfoW(
+            path,
+            Default::default(),
+            Some(&mut shfi),
+            size,
+            SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES,
+        )
+    };
+    if result == 0 {
+        return None;
+    }
+    Some(shfi.hIcon)
+}
+
+pub fn list_windows(is_switch_apps: bool) -> Result<IndexMap<String, Vec<isize>>> {
+    let mut data = EnumWindowsData {
+        is_switch_apps,
+        windows: Default::default(),
+    };
+    unsafe { EnumWindows(Some(enum_window), LPARAM(&mut data as *mut _ as isize)).ok() }
+        .map_err(|e| anyhow!("Fail to get windows {}", e))?;
+    Ok(data.windows)
+}
+
+#[derive(Debug)]
+struct EnumWindowsData {
+    is_switch_apps: bool,
+    windows: IndexMap<String, Vec<isize>>,
+}
+
+extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let state: &mut EnumWindowsData = unsafe { &mut *(lparam.0 as *mut _) };
+    if state.is_switch_apps && (is_iconic(hwnd) || is_window_topmost(hwnd)) {
+        return BOOL(1);
+    }
+    if !is_window_visible(hwnd)
+        || is_window_cloaked(hwnd)
+        || is_popup_window(hwnd)
+        || is_special_window(hwnd)
+    {
+        return BOOL(1);
+    }
+    let pid = get_window_pid(hwnd);
+    let module_path = get_module_path(pid);
+    state.windows.entry(module_path).or_default().push(hwnd.0);
+    BOOL(1)
 }
 
 pub fn register_hotkey(hwnd: HWND, hotkey: &Hotkey) -> Result<()> {
@@ -271,4 +333,8 @@ impl CheckError for u16 {
             Ok(self)
         }
     }
+}
+
+pub fn to_wstring(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(Some(0)).collect::<Vec<u16>>()
 }

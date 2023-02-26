@@ -2,11 +2,12 @@ use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use windows::core::{Error, PCWSTR};
 use windows::Win32::Foundation::{BOOL, LPARAM};
+use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
 use windows::Win32::UI::Shell::{
     SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowLongPtrW, GWL_EXSTYLE, HICON, WS_EX_TOPMOST,
+    BringWindowToTop, EnumWindows, GetWindowLongPtrW, ShowWindow, GWL_EXSTYLE, HICON, WS_EX_TOPMOST,
 };
 use windows::{
     core::PWSTR,
@@ -25,9 +26,8 @@ use windows::{
             Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT},
             WindowsAndMessaging::{
                 GetAncestor, GetForegroundWindow, GetLastActivePopup, GetTitleBarInfo,
-                GetWindowThreadProcessId, IsIconic, IsWindowVisible, IsZoomed, SetForegroundWindow,
-                ShowWindowAsync, GA_ROOTOWNER, GWL_USERDATA, SW_RESTORE, SW_SHOWMAXIMIZED,
-                SW_SHOWNORMAL, TITLEBARINFO,
+                GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
+                GA_ROOTOWNER, GWL_USERDATA, SW_RESTORE, TITLEBARINFO,
             },
         },
     },
@@ -101,10 +101,6 @@ pub fn is_iconic(hwnd: HWND) -> bool {
     unsafe { IsIconic(hwnd) }.as_bool()
 }
 
-pub fn is_zoombed(hwnd: HWND) -> bool {
-    unsafe { IsZoomed(hwnd) }.as_bool()
-}
-
 pub fn is_window_visible(hwnd: HWND) -> bool {
     let ret = unsafe { IsWindowVisible(hwnd) };
     ret.as_bool()
@@ -164,21 +160,22 @@ pub fn get_foreground_window() -> HWND {
     unsafe { GetForegroundWindow() }
 }
 
-pub fn switch_to(hwnd: HWND) -> Result<()> {
-    if hwnd == get_foreground_window() {
-        return Ok(());
-    }
-    if let Err(err) = unsafe { SetForegroundWindow(hwnd) }.ok() {
-        error!("Failed to set foreground {hwnd:?}, {err}");
-    }
-
+pub fn set_foregound_window(hwnd: HWND) -> Result<()> {
     unsafe {
         if is_iconic(hwnd) {
-            ShowWindowAsync(hwnd, SW_RESTORE);
-        } else if is_zoombed(hwnd) {
-            ShowWindowAsync(hwnd, SW_SHOWMAXIMIZED);
-        } else {
-            ShowWindowAsync(hwnd, SW_SHOWNORMAL);
+            ShowWindow(hwnd, SW_RESTORE);
+        }
+        if hwnd == get_foreground_window() {
+            return Ok(());
+        }
+        if SetForegroundWindow(hwnd).ok().is_err() {
+            let thread1 = GetWindowThreadProcessId(get_foreground_window(), None);
+            let thread2 = GetCurrentThreadId();
+            if AttachThreadInput(thread1, thread2, BOOL(1)).ok().is_ok() {
+                BringWindowToTop(hwnd);
+                SetForegroundWindow(hwnd);
+                AttachThreadInput(thread1, thread2, BOOL(0));
+            }
         }
     };
     Ok(())

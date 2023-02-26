@@ -3,8 +3,8 @@ use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
     check_error, get_foreground_window, get_module_icon, get_module_path, get_window_exe,
-    get_window_pid, get_window_ptr, list_windows, register_hotkey, set_window_ptr, switch_to,
-    unregister_hotkey, CheckError,
+    get_window_pid, get_window_ptr, list_windows, register_hotkey, set_foregound_window,
+    set_window_ptr, unregister_hotkey, CheckError,
 };
 
 use anyhow::{anyhow, Result};
@@ -214,7 +214,7 @@ impl App {
                 }
                 if modifier == app.config.switch_apps_hotkey.modifier.0 {
                     if let Some(state) = app.switch_apps_state.take() {
-                        switch_to(HWND(state.apps[state.index].1))?;
+                        set_foregound_window(HWND(state.apps[state.index].1))?;
                         for (hicon, _) in state.apps {
                             unsafe { DestroyIcon(hicon) };
                         }
@@ -339,7 +339,7 @@ impl App {
                 };
                 let hwnd = HWND(windows[index]);
                 debug!("{:?} {:?}", hwnd, self.switch_windows_state);
-                switch_to(hwnd)?;
+                set_foregound_window(hwnd)?;
 
                 Ok(true)
             }

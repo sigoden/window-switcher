@@ -13,7 +13,9 @@ use std::thread;
 use std::time::Duration;
 use windows::core::PCWSTR;
 use windows::w;
-use windows::Win32::Foundation::{GetLastError, COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
+use windows::Win32::Foundation::{
+    GetLastError, COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM,
+};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateSolidBrush, EndPaint, FillRect, RedrawWindow, HRGN, PAINTSTRUCT, RDW_ERASE,
     RDW_INVALIDATE,
@@ -21,11 +23,12 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, DrawIconEx, GetMessageW, GetWindowLongPtrW,
-    PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SendMessageW, SetWindowLongPtrW,
-    SetWindowPos, ShowWindow, TranslateMessage, CW_USEDEFAULT, DI_NORMAL, GWL_STYLE, HICON,
-    HWND_TOPMOST, MSG, SET_WINDOW_POS_FLAGS, SW_HIDE, SW_SHOW, WINDOW_STYLE, WM_COMMAND, WM_CREATE,
-    WM_HOTKEY, WM_LBUTTONUP, WM_PAINT, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
+    CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, DrawIconEx, GetMessageW,
+    GetWindowLongPtrW, LoadCursorW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
+    SendMessageW, SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage,
+    CW_USEDEFAULT, DI_NORMAL, GWL_STYLE, HICON, HWND_TOPMOST, IDC_ARROW, MSG, SET_WINDOW_POS_FLAGS,
+    SW_HIDE, SW_SHOW, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY, WM_LBUTTONUP, WM_PAINT,
+    WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
 };
 
 pub const WM_USER_TRAYICON: u32 = 6000;
@@ -208,6 +211,9 @@ impl App {
                 if modifier == app.config.switch_apps_hotkey.modifier.0 {
                     if let Some(state) = app.switch_apps_state.take() {
                         switch_to(HWND(state.apps[state.index].1))?;
+                        for (hicon, _) in state.apps {
+                            unsafe { DestroyIcon(hicon) };
+                        }
                     }
                     unsafe { ShowWindow(hwnd, SW_HIDE) };
                 }
@@ -368,6 +374,11 @@ impl App {
         // Calculate the position to center the window
         let x = monitor_rect.left + (monitor_width - window_width) / 2;
         let y = monitor_rect.top + (monitor_height - window_height) / 2;
+
+        // Change busy cursor to array cursor
+        if let Ok(hcursor) = unsafe { LoadCursorW(HINSTANCE(0), IDC_ARROW) } {
+            unsafe { SetCursor(hcursor) };
+        }
 
         unsafe {
             SetWindowPos(

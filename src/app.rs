@@ -32,16 +32,18 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_PAINT, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
 };
 
+pub const NAME: PCWSTR = w!("Windows Switcher");
 pub const WM_USER_TRAYICON: u32 = 6000;
 pub const WM_USER_MODIFIER_KEYUP: u32 = 6001;
 pub const WM_USER_FOREGROUND_CHANGE: u32 = 6002;
 pub const IDM_EXIT: u32 = 1;
 pub const IDM_STARTUP: u32 = 2;
-pub const BG_COLOR: COLORREF = COLORREF(0x4c4c4c);
-pub const FG_COLOR: COLORREF = COLORREF(0x3b3b3b);
-pub const ICON_SIZE: i32 = 64;
 
-pub const NAME: PCWSTR = w!("Windows Switcher");
+const BG_COLOR: COLORREF = COLORREF(0x4c4c4c);
+const FG_COLOR: COLORREF = COLORREF(0x3b3b3b);
+const ICON_SIZE: i32 = 64;
+const WINDOW_BORDER_SIZE: i32 = 10;
+const ICON_BORDER_SIZE: i32 = 4;
 
 pub fn start(config: &Config) -> Result<()> {
     debug!("start config={:?}", config);
@@ -377,14 +379,12 @@ impl App {
         let monitor_rect = mi.rcMonitor;
         let monitor_width = monitor_rect.right - monitor_rect.left;
         let monitor_height = monitor_rect.bottom - monitor_rect.top;
-        let window_border_size = 8;
-        let icon_border_size = 4;
-        let icon_size = ((monitor_width - 2 * window_border_size) / num_apps
-            - icon_border_size * 2)
+        let icon_size = ((monitor_width - 2 * WINDOW_BORDER_SIZE) / num_apps
+            - ICON_BORDER_SIZE * 2)
             .min(ICON_SIZE);
-        let item_size = icon_size + icon_border_size * 2;
-        let window_width = item_size * num_apps + window_border_size * 2;
-        let window_height = item_size + window_border_size * 2;
+        let item_size = icon_size + ICON_BORDER_SIZE * 2;
+        let window_width = item_size * num_apps + WINDOW_BORDER_SIZE * 2;
+        let window_height = item_size + WINDOW_BORDER_SIZE * 2;
 
         // Calculate the position to center the window
         let x = monitor_rect.left + (monitor_width - window_width) / 2;
@@ -410,8 +410,6 @@ impl App {
         self.switch_apps_state = Some(SwtichAppsState {
             apps,
             index: 1,
-            window_border_size,
-            icon_border_size,
             icon_size,
         });
         Ok(())
@@ -422,8 +420,8 @@ impl App {
             let mut ps = PAINTSTRUCT::default();
             let hdc = BeginPaint(self.hwnd, &mut ps);
             if let Some(state) = self.switch_apps_state.as_ref() {
-                let cy = state.window_border_size + state.icon_border_size;
-                let item_size = state.icon_size + 2 * state.icon_border_size;
+                let cy = WINDOW_BORDER_SIZE + ICON_BORDER_SIZE;
+                let item_size = state.icon_size + 2 * ICON_BORDER_SIZE;
                 for (i, (hicon, _)) in state.apps.iter().enumerate() {
                     let brush = if i == state.index {
                         CreateSolidBrush(FG_COLOR)
@@ -431,8 +429,8 @@ impl App {
                         CreateSolidBrush(BG_COLOR)
                     };
                     if i == state.index {
-                        let left = state.window_border_size + item_size * (i as i32);
-                        let top = state.window_border_size;
+                        let left = WINDOW_BORDER_SIZE + item_size * (i as i32);
+                        let top = WINDOW_BORDER_SIZE;
                         let right = left + item_size;
                         let bottom = top + item_size;
                         let rect = RECT {
@@ -443,8 +441,7 @@ impl App {
                         };
                         FillRect(hdc, &rect as _, CreateSolidBrush(FG_COLOR));
                     }
-                    let cx =
-                        state.window_border_size + item_size * (i as i32) + state.icon_border_size;
+                    let cx = WINDOW_BORDER_SIZE + item_size * (i as i32) + ICON_BORDER_SIZE;
                     DrawIconEx(
                         hdc,
                         cx,
@@ -536,7 +533,5 @@ struct SwitchWindowsState {
 struct SwtichAppsState {
     apps: Vec<(HICON, isize)>,
     index: usize,
-    window_border_size: i32,
-    icon_border_size: i32,
     icon_size: i32,
 }

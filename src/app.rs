@@ -2,9 +2,9 @@ use crate::config::{Config, Hotkey};
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
-    check_error, get_foreground_window, get_module_icon, get_module_path, get_monitor_rect,
-    get_window_exe, get_window_pid, get_window_ptr, list_windows, register_hotkey, set_window_ptr,
-    switch_to, unregister_hotkey, CheckError,
+    check_error, get_foreground_window, get_module_icon, get_module_path, get_window_exe,
+    get_window_pid, get_window_ptr, list_windows, register_hotkey, set_window_ptr, switch_to,
+    unregister_hotkey, CheckError,
 };
 
 use anyhow::{anyhow, Result};
@@ -14,21 +14,22 @@ use std::time::Duration;
 use windows::core::PCWSTR;
 use windows::w;
 use windows::Win32::Foundation::{
-    GetLastError, COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, RECT, WPARAM,
+    GetLastError, COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, EndPaint, FillRect, RedrawWindow, HRGN, PAINTSTRUCT, RDW_ERASE,
+    BeginPaint, CreateSolidBrush, EndPaint, FillRect, GetMonitorInfoW, MonitorFromPoint,
+    RedrawWindow, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST, PAINTSTRUCT, RDW_ERASE,
     RDW_INVALIDATE,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, SetFocus};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, DrawIconEx, GetMessageW,
-    GetWindowLongPtrW, LoadCursorW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-    SendMessageW, SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage,
-    CW_USEDEFAULT, DI_NORMAL, GWL_STYLE, HICON, HWND_TOPMOST, IDC_ARROW, MSG, SWP_SHOWWINDOW,
-    SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY, WM_LBUTTONUP, WM_PAINT, WM_RBUTTONUP,
-    WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
+    CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, DrawIconEx, GetCursorPos,
+    GetMessageW, GetWindowLongPtrW, LoadCursorW, PostQuitMessage, RegisterClassW,
+    RegisterWindowMessageW, SendMessageW, SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    TranslateMessage, CW_USEDEFAULT, DI_NORMAL, GWL_STYLE, HICON, HWND_TOPMOST, IDC_ARROW, MSG,
+    SWP_SHOWWINDOW, SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY, WM_LBUTTONUP,
+    WM_PAINT, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
 };
 
 pub const WM_USER_TRAYICON: u32 = 6000;
@@ -360,7 +361,19 @@ impl App {
             }
         }
         let num_apps = apps.len() as i32;
-        let monitor_rect = get_monitor_rect(hwnd);
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..MONITORINFO::default()
+        };
+        unsafe {
+            let mut cursor = POINT::default();
+            GetCursorPos(&mut cursor);
+
+            let hmonitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+            GetMonitorInfoW(hmonitor, &mut mi);
+        }
+
+        let monitor_rect = mi.rcMonitor;
         let monitor_width = monitor_rect.right - monitor_rect.left;
         let monitor_height = monitor_rect.bottom - monitor_rect.top;
         let window_border_size = 8;

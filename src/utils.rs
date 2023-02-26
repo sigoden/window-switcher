@@ -2,9 +2,6 @@ use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use windows::core::{Error, PCWSTR};
 use windows::Win32::Foundation::{BOOL, LPARAM};
-use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTOPRIMARY,
-};
 use windows::Win32::UI::Shell::{SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON};
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetWindowLongPtrW, GWL_EXSTYLE, HICON, WS_EX_TOPMOST,
@@ -12,7 +9,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use windows::{
     core::PWSTR,
     Win32::{
-        Foundation::{SetLastError, ERROR_SUCCESS, HANDLE, HWND, RECT},
+        Foundation::{SetLastError, ERROR_SUCCESS, HANDLE, HWND},
         Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL},
         System::{
             LibraryLoader::GetModuleFileNameW,
@@ -183,17 +180,6 @@ pub fn switch_to(hwnd: HWND) -> Result<()> {
         }
     };
     Ok(())
-}
-
-pub fn get_monitor_rect(hwnd: HWND) -> RECT {
-    // Get the dimensions of the primary monitor
-    let hmonitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTOPRIMARY) };
-    let mut mi = MONITORINFO {
-        cbSize: size_of::<MONITORINFO>() as u32,
-        ..MONITORINFO::default()
-    };
-    unsafe { GetMonitorInfoW(hmonitor, &mut mi) };
-    mi.rcMonitor
 }
 
 pub fn get_module_icon(module_path: &str) -> Option<HICON> {

@@ -407,9 +407,11 @@ impl App {
             );
         }
 
+        let index = if apps.len() == 1 { 0 } else { 1 };
+
         self.switch_apps_state = Some(SwtichAppsState {
             apps,
-            index: 1,
+            index,
             icon_size,
         });
         Ok(())

@@ -1,22 +1,24 @@
 # Windows Switcher
 
-Easily switch windows of the same application with a hotkey (``` alt + ` ```) on Windows PC.
+MacOS-like window switcher for Windows OS.
 
-- The tiny single-file executable runs without installation.
-- Support custom hotkeys.
-- Support blacklist apps to avoid hotkey override.
+1. Switch between windows of the same app with ``` alt+` ```
+
+![snapshot2](https://user-images.githubusercontent.com/4012553/221538973-89468c27-c0e2-45ca-bfae-ac45bd5ad6df.gif)
+
+2. Switch between application windows with `alt+a`
+
+![snapshot1](https://user-images.githubusercontent.com/4012553/221538853-b4793205-23a6-4a27-9f3c-4ff519cd6650.gif)
 
 ## Get Started
 
-- Downloaded from [Github Release](https://github.com/sigoden/windows-switcher/releases).
+- Download and unzip windows-switcher from [Github Release](https://github.com/sigoden/windows-switcher/releases).
 - Double-click `Windows-Switcher.exe` to start it. A trayicon will appear.
-
-- Press and hold the `alt` key, tap ``` ` ``` to cycle through windows.
-- Press and release ``` alt+` ``` at the same time to switch back to the last focus window.
+- Done. Try use hotkey to switch windows.
 
 ## Configuration
 
-Create a `windows-switcher.ini` file in the same directory as `windows-switcher.exe`.
+If you need to custom hotkeys, you can create a `windows-switcher.ini` file in the same directory as `windows-switcher.exe`, then add custom configuration.
 
 The default configuration is as follows:
 
@@ -36,27 +38,16 @@ blacklist =
 [switch-apps]
 
 # Whether to enable switching apps
-enable = no
-
-# Hotkey to switch apps
-hotkey = alt+a
-```
-
-
-## Experimental switching apps
-
-- Create a `windows-switcher.ini` file in the same directory as `windows-switcher.exe`.
-
-```ini
-[switch-apps]
-
-# Whether to enable switching apps
 enable = yes
 
 # Hotkey to switch apps
-hotkey = alt+a
+hotkey = alt+a # Unable to register system hotkey such as alt+tab, win+tab
 ```
 
-- Press and hold the `alt` key, tap `a` to cycle through apps.
+## License
 
-- Press and release `alt+a` at the same time to switch back to the last focus app.
+Copyright (c) 2022 windows-switcher-developers.
+
+windows-switcher is made available under the terms of the MIT License, at your option.
+
+See the LICENSE files for license details.

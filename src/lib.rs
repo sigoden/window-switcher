@@ -1,5 +1,7 @@
 mod app;
 mod config;
+mod foregound;
+mod keyboard;
 mod startup;
 mod trayicon;
 

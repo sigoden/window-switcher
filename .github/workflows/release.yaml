@@ -81,9 +81,9 @@ jobs:
         executable=target/$target/release/$bin.exe
 
         if [[ "$target" == "i686-pc-windows-msvc" ]]; then
-          name=$name-x32
+          name=$name-win32
         else
-          name=$name-x64
+          name=$name-win64
         fi
 
         mkdir $dist

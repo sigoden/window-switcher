@@ -6,7 +6,7 @@ MacOS-like window switcher for Windows OS.
 
 ![switch-windows](https://user-images.githubusercontent.com/4012553/221805510-ee6a4f2e-e527-4f63-b4a0-080a447d176d.gif)
 
-2. Switch between application windows with `alt+a`
+2. Switch between application windows with `alt+tab`
 
 ![switch-apps](https://user-images.githubusercontent.com/4012553/221538853-b4793205-23a6-4a27-9f3c-4ff519cd6650.gif)
 
@@ -18,7 +18,7 @@ MacOS-like window switcher for Windows OS.
 
 ## Configuration
 
-If you need to custom hotkeys, you can create a `windows-switcher.ini` file in the same directory as `windows-switcher.exe`, then add custom configuration.
+You can configure windows-switcher by creating a `windows-switcher.ini` file in the same directory as `windows-switcher.exe`.
 
 The default configuration is as follows:
 
@@ -38,11 +38,13 @@ blacklist =
 [switch-apps]
 
 # Whether to enable switching apps
-enable = yes
+enable = no
 
 # Hotkey to switch apps
-hotkey = alt+a # Unable to register system hotkey such as alt+tab, win+tab
+hotkey = alt+tab
 ```
+
+**You have to manually configure `switch-apps.enable=yes` to replace the system builtin `alt+tab` switcher**;
 
 ## License
 

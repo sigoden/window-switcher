@@ -1,16 +1,15 @@
-use crate::config::{Config, Hotkey};
+use crate::config::Config;
+use crate::foregound::ForegroundWatcher;
+use crate::keyboard::KeyboardListener;
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
-    check_error, get_foreground_window, get_module_icon, get_module_path, get_window_exe,
-    get_window_pid, get_window_ptr, list_windows, register_hotkey, set_foregound_window,
-    set_window_ptr, unregister_hotkey, CheckError,
+    check_error, get_foreground_window, get_module_icon, get_module_path, get_window_pid,
+    get_window_ptr, list_windows, set_foregound_window, set_window_ptr, CheckError,
 };
 
 use anyhow::{anyhow, Result};
 use once_cell::sync::Lazy;
-use std::thread;
-use std::time::Duration;
 use windows::core::PCWSTR;
 use windows::w;
 use windows::Win32::Foundation::{
@@ -22,20 +21,20 @@ use windows::Win32::Graphics::Gdi::{
     RDW_INVALIDATE,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::{GetKeyState, SetFocus};
+use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, DrawIconEx, GetCursorPos,
     GetMessageW, GetWindowLongPtrW, LoadCursorW, PostQuitMessage, RegisterClassW,
-    RegisterWindowMessageW, SendMessageW, SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    RegisterWindowMessageW, SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow,
     TranslateMessage, CW_USEDEFAULT, DI_NORMAL, GWL_STYLE, HICON, HWND_TOPMOST, IDC_ARROW, MSG,
-    SWP_SHOWWINDOW, SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_HOTKEY, WM_LBUTTONUP,
-    WM_PAINT, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
+    SWP_SHOWWINDOW, SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_LBUTTONUP, WM_PAINT,
+    WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
 };
 
 pub const NAME: PCWSTR = w!("Windows Switcher");
 pub const WM_USER_TRAYICON: u32 = 6000;
 pub const WM_USER_MODIFIER_KEYUP: u32 = 6001;
-pub const WM_USER_FOREGROUND_CHANGE: u32 = 6002;
+pub const WM_USER_HOOTKEY: u32 = 6002;
 pub const IDM_EXIT: u32 = 1;
 pub const IDM_STARTUP: u32 = 2;
 
@@ -60,7 +59,7 @@ pub struct App {
     trayicon: Option<TrayIcon>,
     startup: Startup,
     config: Config,
-    enable_hotkey: bool,
+    // enable_hotkey: bool,
     switch_windows_state: SwitchWindowsState,
     switch_apps_state: Option<SwtichAppsState>,
 }
@@ -69,13 +68,11 @@ impl App {
     pub fn start(config: &Config) -> Result<()> {
         let hwnd = Self::create_window()?;
 
-        let is_empty_blacklist = config.switch_windows_blacklist.is_empty();
-        if is_empty_blacklist {
-            register_hotkey(hwnd, &config.switch_windows_hotkey)?;
-        }
-        if config.switch_apps_enable {
-            register_hotkey(hwnd, &config.switch_apps_hotkey)?;
-        }
+        let _foreground_watcher = ForegroundWatcher::init(&config.switch_windows_blacklist)?;
+        let _keyboard_listener = KeyboardListener::init(
+            hwnd,
+            &[&config.switch_windows_hotkey, &config.switch_apps_hotkey],
+        )?;
 
         let trayicon = match config.trayicon {
             true => Some(TrayIcon::create()),
@@ -89,7 +86,6 @@ impl App {
             trayicon,
             startup,
             config: config.clone(),
-            enable_hotkey: is_empty_blacklist,
             switch_windows_state: SwitchWindowsState {
                 cache: None,
                 modifier_released: true,
@@ -102,11 +98,6 @@ impl App {
         let app_ptr = Box::into_raw(Box::new(app)) as _;
         check_error(|| set_window_ptr(hwnd, app_ptr))
             .map_err(|err| anyhow!("Failed to set window ptr, {err}"))?;
-
-        let config = config.clone();
-        thread::spawn(move || {
-            watch(hwnd, config);
-        });
 
         Self::eventloop()
     }
@@ -218,38 +209,12 @@ impl App {
                         for (hicon, _) in state.apps {
                             unsafe { DestroyIcon(hicon) };
                         }
+                        unsafe { ShowWindow(hwnd, SW_HIDE) };
                     }
-                    unsafe { ShowWindow(hwnd, SW_HIDE) };
                 }
             }
-            WM_USER_FOREGROUND_CHANGE => {
-                let fg_hwnd = get_foreground_window();
-                let exe = get_window_exe(fg_hwnd);
-                if exe.is_empty() {
-                    return Ok(LRESULT(0));
-                };
-                let app = get_app(hwnd)?;
-                let config = &app.config;
-                match (
-                    config.switch_windows_blacklist.contains(&exe),
-                    app.enable_hotkey,
-                ) {
-                    (false, false) => match register_hotkey(hwnd, &config.switch_windows_hotkey) {
-                        Ok(_) => app.enable_hotkey = true,
-                        Err(err) => error!("{err}"),
-                    },
-                    (true, true) => match unregister_hotkey(hwnd, &config.switch_windows_hotkey) {
-                        Ok(_) => app.enable_hotkey = false,
-                        Err(err) => error!("{err}"),
-                    },
-                    _ => {}
-                }
-            }
-            WM_CREATE => {
-                debug!("Handle msg=WM_CREATE");
-            }
-            WM_HOTKEY => {
-                debug!("Handle msg=WM_HOTKEY");
+            WM_USER_HOOTKEY => {
+                debug!("Handle msg=WM_USER_HOTKEY");
                 let app = get_app(hwnd)?;
                 let hotkey_id = wparam.0 as u32;
                 if hotkey_id == app.config.switch_windows_hotkey.id {
@@ -260,6 +225,9 @@ impl App {
                         RedrawWindow(hwnd, None, HRGN::default(), RDW_ERASE | RDW_INVALIDATE)
                     };
                 }
+            }
+            WM_CREATE => {
+                debug!("Handle msg=WM_CREATE");
             }
             WM_COMMAND => {
                 let value = wparam.0 as u32;
@@ -470,58 +438,6 @@ fn get_app(hwnd: HWND) -> Result<&'static mut App> {
             .map_err(|err| anyhow!("Failed to get window ptr, {err}"))?;
         let tx: &mut App = &mut *(ptr as *mut _);
         Ok(tx)
-    }
-}
-
-pub fn watch(hwnd: HWND, config: Config) {
-    let mut fg_hwnd_prev = HWND::default();
-    let mut is_switch_windows_modifier_pressed_prev: bool = false;
-    let mut is_switch_apps_modifier_pressed_prev: bool = false;
-    let watch_key = |hotkey: &Hotkey, is_modifier_pressed_prev: &mut bool| {
-        let modifier = hotkey.modifier.0;
-        match (
-            *is_modifier_pressed_prev,
-            unsafe { GetKeyState(modifier.into()) } < 0,
-        ) {
-            (true, false) => {
-                // alt key release
-                *is_modifier_pressed_prev = false;
-                unsafe {
-                    SendMessageW(
-                        hwnd,
-                        WM_USER_MODIFIER_KEYUP,
-                        WPARAM(modifier.into()),
-                        LPARAM(0),
-                    )
-                };
-            }
-            (false, true) => {
-                *is_modifier_pressed_prev = true;
-            }
-            _ => {}
-        }
-    };
-    loop {
-        thread::sleep(Duration::from_millis(100));
-        if !config.switch_windows_blacklist.is_empty() {
-            let fg_hwnd = get_foreground_window();
-            if fg_hwnd != fg_hwnd_prev {
-                unsafe { SendMessageW(hwnd, WM_USER_FOREGROUND_CHANGE, WPARAM(0), LPARAM(0)) };
-                fg_hwnd_prev = fg_hwnd;
-            }
-        }
-        watch_key(
-            &config.switch_windows_hotkey,
-            &mut is_switch_windows_modifier_pressed_prev,
-        );
-        if config.switch_apps_enable
-            && config.switch_windows_hotkey.modifier != config.switch_apps_hotkey.modifier
-        {
-            watch_key(
-                &config.switch_apps_hotkey,
-                &mut is_switch_apps_modifier_pressed_prev,
-            );
-        }
     }
 }
 

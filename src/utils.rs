@@ -2,12 +2,13 @@ use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use windows::core::{Error, PCWSTR};
 use windows::Win32::Foundation::{BOOL, LPARAM};
-use windows::Win32::System::Threading::{AttachThreadInput, GetCurrentThreadId};
+use windows::Win32::System::Console::{AllocConsole, FreeConsole, GetConsoleWindow};
 use windows::Win32::UI::Shell::{
     SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    BringWindowToTop, EnumWindows, GetWindowLongPtrW, ShowWindow, GWL_EXSTYLE, HICON, WS_EX_TOPMOST,
+    EnumWindows, GetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HICON, SWP_NOZORDER,
+    WS_EX_TOPMOST,
 };
 use windows::{
     core::PWSTR,
@@ -169,13 +170,11 @@ pub fn set_foregound_window(hwnd: HWND) -> Result<()> {
             return Ok(());
         }
         if SetForegroundWindow(hwnd).ok().is_err() {
-            let thread1 = GetWindowThreadProcessId(get_foreground_window(), None);
-            let thread2 = GetCurrentThreadId();
-            if AttachThreadInput(thread1, thread2, BOOL(1)).ok().is_ok() {
-                BringWindowToTop(hwnd);
-                SetForegroundWindow(hwnd);
-                AttachThreadInput(thread1, thread2, BOOL(0));
-            }
+            AllocConsole();
+            let hwnd_console = GetConsoleWindow();
+            SetWindowPos(hwnd_console, None, 0, 0, 0, 0, SWP_NOZORDER);
+            FreeConsole();
+            SetForegroundWindow(hwnd);
         }
     };
     Ok(())

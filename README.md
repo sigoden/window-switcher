@@ -1,4 +1,4 @@
-# Windows Switcher
+# Window Switcher
 
 MacOS-like window switcher for Windows OS.
 
@@ -12,13 +12,13 @@ MacOS-like window switcher for Windows OS.
 
 ## Get Started
 
-- Download and unzip windows-switcher from [Github Release](https://github.com/sigoden/windows-switcher/releases).
-- Double-click `Windows-Switcher.exe` to start it. A trayicon will appear.
+- Download and unzip window-switcher from [Github Release](https://github.com/sigoden/window-switcher/releases).
+- Double-click `window-switcher.exe` to start it. A trayicon will appear.
 - Done. Try use hotkey to switch windows.
 
 ## Configuration
 
-You can configure windows-switcher by creating a `windows-switcher.ini` file in the same directory as `windows-switcher.exe`.
+You can configure window-switcher by creating a `window-switcher.ini` file in the same directory as `window-switcher.exe`.
 
 The default configuration is as follows:
 
@@ -48,8 +48,8 @@ hotkey = alt+tab
 
 ## License
 
-Copyright (c) 2023 windows-switcher-developers.
+Copyright (c) 2023 window-switcher-developers.
 
-windows-switcher is made available under the terms of the MIT License, at your option.
+window-switcher is made available under the terms of the MIT License, at your option.
 
 See the LICENSE files for license details.

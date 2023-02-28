@@ -29,11 +29,11 @@ BEGIN
     BEGIN
         BLOCK "040004b0"
         BEGIN
-            VALUE "FileDescription", "Windows Switcher"
-            VALUE "InternalName", "windows-switcher.exe"
+            VALUE "FileDescription", "Window Switcher"
+            VALUE "InternalName", "window-switcher.exe"
             VALUE "LegalCopyright", "Copyright (C) 2023"
-            VALUE "OriginalFilename", "windows-switcher.exe"
-            VALUE "ProductName", "Windows Switcher"
+            VALUE "OriginalFilename", "window-switcher.exe"
+            VALUE "ProductName", "Window Switcher"
             VALUE "ProductVersion", "0.8.0.0"
         END
     END

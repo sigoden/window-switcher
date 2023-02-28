@@ -10,7 +10,7 @@ pub fn message_box(text: &str) {
         MessageBoxW(
             None,
             PCWSTR(text.as_ptr() as _),
-            w!("Windows Switcher Error"),
+            w!("Window Switcher Error"),
             MB_OK | MB_ICONERROR,
         )
     };

@@ -31,7 +31,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
 };
 
-pub const NAME: PCWSTR = w!("Windows Switcher");
+pub const NAME: PCWSTR = w!("Window Switcher");
 pub const WM_USER_TRAYICON: u32 = 6000;
 pub const WM_USER_MODIFIER_KEYUP: u32 = 6001;
 pub const WM_USER_HOOTKEY: u32 = 6002;

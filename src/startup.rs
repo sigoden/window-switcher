@@ -10,7 +10,7 @@ use windows::Win32::System::Registry::{
 use crate::utils::{get_exe_path, BUFFER_SIZE};
 
 const HKEY_RUN: PCWSTR = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
-const HKEY_NAME: PCWSTR = w!("Windows Switcher");
+const HKEY_NAME: PCWSTR = w!("Window Switcher");
 
 #[derive(Default)]
 pub struct Startup {

@@ -6,7 +6,7 @@ MacOS-like window switcher for Windows OS.
 
 ![switch-windows](https://user-images.githubusercontent.com/4012553/221805510-ee6a4f2e-e527-4f63-b4a0-080a447d176d.gif)
 
-2. Switch between application windows with `alt+tab`
+2. Switch open apps with `alt+tab`
 
 ![switch-apps](https://user-images.githubusercontent.com/4012553/221538853-b4793205-23a6-4a27-9f3c-4ff519cd6650.gif)
 
@@ -44,7 +44,7 @@ enable = no
 hotkey = alt+tab
 ```
 
-**You have to manually configure `switch-apps.enable=yes` to replace the system builtin `alt+tab` switcher**;
+**You must manually configure `switch-apps.enable=yes` to use `alt+tab` to switch open apps**.
 
 ## License
 

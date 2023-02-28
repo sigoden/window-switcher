@@ -205,7 +205,9 @@ impl App {
                 }
                 if modifier == app.config.switch_apps_hotkey.modifier.0 {
                     if let Some(state) = app.switch_apps_state.take() {
-                        set_foregound_window(HWND(state.apps[state.index].1))?;
+                        if let Some((_, id)) = state.apps.get(state.index) {
+                            set_foregound_window(HWND(*id))?;
+                        }
                         for (hicon, _) in state.apps {
                             unsafe { DestroyIcon(hicon) };
                         }
@@ -332,6 +334,9 @@ impl App {
             }
         }
         let num_apps = apps.len() as i32;
+        if num_apps == 0 {
+            return Ok(());
+        }
         let mut mi = MONITORINFO {
             cbSize: std::mem::size_of::<MONITORINFO>() as u32,
             ..MONITORINFO::default()

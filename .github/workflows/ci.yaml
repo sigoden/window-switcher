@@ -47,7 +47,7 @@ jobs:
 
     - name: Check Lockfile
       run: |
-        cargo update --locked --package windows-switcher
+        cargo update --locked --package window-switcher
 
     - name: Test
       uses: actions-rs/cargo@v1

@@ -7,7 +7,7 @@ use std::{
 };
 
 use ini::Ini;
-use windows_switcher::{alert, start, utils::get_exe_folder, Config};
+use window_switcher::{alert, start, utils::get_exe_folder, Config};
 
 fn main() {
     if let Err(err) = run() {
@@ -32,7 +32,7 @@ fn run() -> Result<()> {
 
 fn load_config() -> Result<Config> {
     let folder = get_exe_folder()?;
-    let ini_file = folder.join("windows-switcher.ini");
+    let ini_file = folder.join("window-switcher.ini");
     let conf =
         Ini::load_from_file(ini_file).map_err(|err| anyhow!("Faile to load ini file, {err}"))?;
     Config::load(&conf)

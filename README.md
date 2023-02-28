@@ -1,22 +1,24 @@
 # Windows Switcher
 
-Easily switch windows of the same application with a hotkey (``` alt + ` ```) on Windows PC.
+MacOS-like window switcher for Windows OS.
 
-- The tiny single-file executable runs without installation.
-- Support custom hotkeys.
-- Support blacklist apps to avoid hotkey override.
+1. Switch between windows of the same app with ``` alt+` ```
+
+![switch-windows](https://user-images.githubusercontent.com/4012553/221805510-ee6a4f2e-e527-4f63-b4a0-080a447d176d.gif)
+
+2. Switch between application windows with `alt+tab`
+
+![switch-apps](https://user-images.githubusercontent.com/4012553/221538853-b4793205-23a6-4a27-9f3c-4ff519cd6650.gif)
 
 ## Get Started
 
-- Downloaded from [Github Release](https://github.com/sigoden/windows-switcher/releases).
+- Download and unzip windows-switcher from [Github Release](https://github.com/sigoden/windows-switcher/releases).
 - Double-click `Windows-Switcher.exe` to start it. A trayicon will appear.
-
-- Press and hold the `alt` key, tap ``` ` ``` to cycle through windows.
-- Press and release ``` alt+` ``` at the same time to switch back to the last focus window.
+- Done. Try use hotkey to switch windows.
 
 ## Configuration
 
-Create a `windows-switcher.ini` file in the same directory as `windows-switcher.exe`.
+You can configure windows-switcher by creating a `windows-switcher.ini` file in the same directory as `windows-switcher.exe`.
 
 The default configuration is as follows:
 
@@ -39,24 +41,15 @@ blacklist =
 enable = no
 
 # Hotkey to switch apps
-hotkey = alt+a
+hotkey = alt+tab
 ```
 
+**You have to manually configure `switch-apps.enable=yes` to replace the system builtin `alt+tab` switcher**;
 
-## Experimental switching apps
+## License
 
-- Create a `windows-switcher.ini` file in the same directory as `windows-switcher.exe`.
+Copyright (c) 2023 windows-switcher-developers.
 
-```ini
-[switch-apps]
+windows-switcher is made available under the terms of the MIT License, at your option.
 
-# Whether to enable switching apps
-enable = yes
-
-# Hotkey to switch apps
-hotkey = alt+a
-```
-
-- Press and hold the `alt` key, tap `a` to cycle through apps.
-
-- Press and release `alt+a` at the same time to switch back to the last focus app.
+See the LICENSE files for license details.

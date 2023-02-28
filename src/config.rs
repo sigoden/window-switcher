@@ -29,10 +29,16 @@ impl Default for Config {
             trayicon: true,
             log_level: LevelFilter::Info,
             log_file: None,
-            switch_windows_hotkey: Hotkey::create(SWITCH_WINDOWS_HOTKEY_ID, "switch windows", "alt + `").unwrap(),
+            switch_windows_hotkey: Hotkey::create(
+                SWITCH_WINDOWS_HOTKEY_ID,
+                "switch windows",
+                "alt + `",
+            )
+            .unwrap(),
             switch_windows_blacklist: Default::default(),
             switch_apps_enable: false,
-            switch_apps_hotkey: Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", "alt + tab").unwrap(),
+            switch_apps_hotkey: Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", "alt + tab")
+                .unwrap(),
         }
     }
 }
@@ -65,7 +71,8 @@ impl Config {
         if let Some(section) = ini_conf.section(Some("switch-windows")) {
             if let Some(v) = section.get("hotkey") {
                 if !v.trim().is_empty() {
-                    conf.switch_windows_hotkey = Hotkey::create(SWITCH_WINDOWS_HOTKEY_ID, "switch windows", v)?;
+                    conf.switch_windows_hotkey =
+                        Hotkey::create(SWITCH_WINDOWS_HOTKEY_ID, "switch windows", v)?;
                 }
             }
 
@@ -82,7 +89,8 @@ impl Config {
             }
             if let Some(v) = section.get("hotkey") {
                 if !v.trim().is_empty() {
-                    conf.switch_apps_hotkey = Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", v)?;
+                    conf.switch_apps_hotkey =
+                        Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", v)?;
                 }
             }
         }

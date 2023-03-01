@@ -1,13 +1,15 @@
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use windows::core::{Error, PCWSTR, PWSTR};
-use windows::Win32::Foundation::{SetLastError, BOOL, ERROR_SUCCESS, HANDLE, HWND, LPARAM};
+use windows::Win32::Foundation::{
+    CloseHandle, SetLastError, BOOL, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, HANDLE, HWND, LPARAM,
+};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL};
 use windows::Win32::System::Console::{AllocConsole, FreeConsole, GetConsoleWindow};
 use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
 use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
-    PROCESS_VM_READ,
+    CreateMutexW, OpenProcess, QueryFullProcessImageNameW, ReleaseMutex, PROCESS_NAME_WIN32,
+    PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
 };
 use windows::Win32::UI::Controls::STATE_SYSTEM_INVISIBLE;
 use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT};
@@ -320,4 +322,44 @@ impl CheckError for u16 {
 
 pub fn to_wstring(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(Some(0)).collect::<Vec<u16>>()
+}
+
+/// A struct representing one running instance.
+pub struct SingleInstance {
+    handle: Option<HANDLE>,
+}
+
+unsafe impl Send for SingleInstance {}
+unsafe impl Sync for SingleInstance {}
+
+impl SingleInstance {
+    /// Returns a new SingleInstance object.
+    pub fn create(name: &str) -> Result<Self> {
+        let name = to_wstring(name);
+        let handle = unsafe { CreateMutexW(None, BOOL(1), PCWSTR(name.as_ptr())) }
+            .map_err(|err| anyhow!("Fail to setup single instance, {err}"))?;
+        let handle =
+            if windows::core::Error::from_win32().code() == ERROR_ALREADY_EXISTS.to_hresult() {
+                None
+            } else {
+                Some(handle)
+            };
+        Ok(SingleInstance { handle })
+    }
+
+    /// Returns whether this instance is single.
+    pub fn is_single(&self) -> bool {
+        self.handle.is_some()
+    }
+}
+
+impl Drop for SingleInstance {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            unsafe {
+                ReleaseMutex(handle);
+                CloseHandle(handle);
+            }
+        }
+    }
 }

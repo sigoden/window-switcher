@@ -1,13 +1,17 @@
 #![windows_subsystem = "windows"]
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, Result};
 use std::{
     fs::{File, OpenOptions},
     path::Path,
 };
 
 use ini::Ini;
-use window_switcher::{alert, start, utils::get_exe_folder, Config};
+use window_switcher::{
+    alert, start,
+    utils::{get_exe_folder, SingleInstance},
+    Config,
+};
 
 fn main() {
     if let Err(err) = run() {
@@ -26,6 +30,10 @@ fn run() -> Result<()> {
             )
         })?;
         simple_logging::log_to(file, config.log_level);
+    }
+    let instance = SingleInstance::create("WindowSwitcherMutex")?;
+    if !instance.is_single() {
+        bail!("Another instance is running. This instance will abort.")
     }
     start(&config)
 }

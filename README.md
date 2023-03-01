@@ -15,7 +15,7 @@ MacOS-like window switcher for Windows OS.
 - 350k single-file application that can be downloaded from [Github Release](https://github.com/sigoden/windows-switcher/releases), run without installation.
 - Support for custom keybindings.
 - Support blacklist apps to avoid hotkey override.
-- Easily turn on/off run on startup using the tray menu.
+- Easily turn on/off `run on startup` using the tray menu.
 
 ## Configuration
 
@@ -45,7 +45,9 @@ enable = no
 hotkey = alt+tab
 ```
 
-**You must manually configure `switch-apps.enable=yes` to use `alt+tab` to switch open apps**.
+⚠️ **You must manually configure `switch-apps.enable=yes` to enable `alt+tab` to enable open apps.** ⚠️
+
+⚠️ **After changing the configuration, you need to restart for the new configuration to take effect.** ⚠️
 
 ## License
 

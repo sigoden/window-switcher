@@ -1,37 +1,24 @@
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
-use windows::core::{Error, PCWSTR};
-use windows::Win32::Foundation::{BOOL, LPARAM};
+use windows::core::{Error, PCWSTR, PWSTR};
+use windows::Win32::Foundation::{SetLastError, BOOL, ERROR_SUCCESS, HANDLE, HWND, LPARAM};
+use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL};
 use windows::Win32::System::Console::{AllocConsole, FreeConsole, GetConsoleWindow};
+use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
+use windows::Win32::System::Threading::{
+    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
+    PROCESS_VM_READ,
+};
+use windows::Win32::UI::Controls::STATE_SYSTEM_INVISIBLE;
+use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT};
 use windows::Win32::UI::Shell::{
     SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetWindowLongPtrW, SetWindowPos, ShowWindow, GWL_EXSTYLE, HICON, SWP_NOZORDER,
-    WS_EX_TOPMOST,
-};
-use windows::{
-    core::PWSTR,
-    Win32::{
-        Foundation::{SetLastError, ERROR_SUCCESS, HANDLE, HWND},
-        Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL},
-        System::{
-            LibraryLoader::GetModuleFileNameW,
-            Threading::{
-                OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
-                PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
-            },
-        },
-        UI::{
-            Controls::STATE_SYSTEM_INVISIBLE,
-            Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT},
-            WindowsAndMessaging::{
-                GetAncestor, GetForegroundWindow, GetLastActivePopup, GetTitleBarInfo,
-                GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
-                GA_ROOTOWNER, GWL_USERDATA, SW_RESTORE, TITLEBARINFO,
-            },
-        },
-    },
+    EnumWindows, GetAncestor, GetForegroundWindow, GetLastActivePopup, GetTitleBarInfo,
+    GetWindowLongPtrW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
+    SetWindowPos, ShowWindow, GA_ROOTOWNER, GWL_EXSTYLE, GWL_USERDATA, HICON, SWP_NOZORDER,
+    SW_RESTORE, TITLEBARINFO, WS_EX_TOPMOST,
 };
 
 use std::path::PathBuf;

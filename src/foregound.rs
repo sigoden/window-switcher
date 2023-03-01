@@ -2,14 +2,10 @@ use crate::utils::get_window_exe;
 use anyhow::{bail, Result};
 use once_cell::sync::OnceCell;
 use std::collections::HashSet;
-use windows::Win32::{
-    Foundation::HWND,
-    UI::{
-        Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK},
-        WindowsAndMessaging::{
-            EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
-        },
-    },
+use windows::Win32::Foundation::HWND;
+use windows::Win32::UI::Accessibility::{SetWinEventHook, UnhookWinEvent, HWINEVENTHOOK};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EVENT_SYSTEM_FOREGROUND, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
 };
 
 pub static mut IS_FOREGROUND_IN_BLACKLIST: bool = false;

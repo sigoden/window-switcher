@@ -5,16 +5,12 @@ use crate::{
 };
 
 use anyhow::{anyhow, Result};
-use windows::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-    System::LibraryLoader::GetModuleHandleW,
-    UI::{
-        Input::KeyboardAndMouse::VIRTUAL_KEY,
-        WindowsAndMessaging::{
-            CallNextHookEx, SendMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
-            KBDLLHOOKSTRUCT, WH_KEYBOARD_LL,
-        },
-    },
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
+use windows::Win32::UI::WindowsAndMessaging::{
+    CallNextHookEx, SendMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
+    WH_KEYBOARD_LL,
 };
 
 static mut KEYBOARD_STATE: Vec<HotKeyState> = vec![];

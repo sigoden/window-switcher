@@ -10,11 +10,12 @@ MacOS-like window switcher for Windows OS.
 
 ![switch-apps](https://user-images.githubusercontent.com/4012553/221538853-b4793205-23a6-4a27-9f3c-4ff519cd6650.gif)
 
-## Get Started
+## Features
 
-- Download and unzip window-switcher from [Github Release](https://github.com/sigoden/window-switcher/releases).
-- Double-click `window-switcher.exe` to start it. A trayicon will appear.
-- Done. Try use hotkey to switch windows.
+- 350k single-file application that can be downloaded from [Github Release](https://github.com/sigoden/windows-switcher/releases), run without installation.
+- Support for custom keybindings.
+- Support blacklist apps to avoid hotkey override.
+- Easily turn on/off run on startup using the tray menu.
 
 ## Configuration
 

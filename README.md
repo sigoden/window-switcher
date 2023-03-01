@@ -45,7 +45,7 @@ enable = no
 hotkey = alt+tab
 ```
 
-⚠️ **You must manually configure `switch-apps.enable=yes` to enable `alt+tab` to enable open apps.** ⚠️
+⚠️ **You must manually configure `switch-apps.enable=yes` to enable `alt+tab` to switch open apps.** ⚠️
 
 ⚠️ **After changing the configuration, you need to restart for the new configuration to take effect.** ⚠️
 

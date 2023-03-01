@@ -27,8 +27,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     GetMessageW, GetWindowLongPtrW, LoadCursorW, PostQuitMessage, RegisterClassW,
     RegisterWindowMessageW, SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow,
     TranslateMessage, CW_USEDEFAULT, DI_NORMAL, GWL_STYLE, HICON, HWND_TOPMOST, IDC_ARROW, MSG,
-    SWP_SHOWWINDOW, SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_CREATE, WM_LBUTTONUP, WM_PAINT,
-    WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
+    SWP_SHOWWINDOW, SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_LBUTTONUP, WM_PAINT, WM_RBUTTONUP,
+    WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
 };
 
 pub const NAME: PCWSTR = w!("Window Switcher");
@@ -45,7 +45,7 @@ const WINDOW_BORDER_SIZE: i32 = 10;
 const ICON_BORDER_SIZE: i32 = 4;
 
 pub fn start(config: &Config) -> Result<()> {
-    debug!("start config={:?}", config);
+    info!("start config={:?}", config);
     App::start(config)
 }
 
@@ -156,6 +156,7 @@ impl App {
         .check_error()
         .map_err(|err| anyhow!("Failed to create windows, {err}"))?;
 
+        // hide caption
         let mut style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32;
         style &= !WS_CAPTION.0;
         unsafe { SetWindowLongPtrW(hwnd, GWL_STYLE, style as _) };
@@ -216,7 +217,6 @@ impl App {
                 }
             }
             WM_USER_HOOTKEY => {
-                debug!("Handle msg=WM_USER_HOTKEY");
                 let app = get_app(hwnd)?;
                 let hotkey_id = wparam.0 as u32;
                 if hotkey_id == app.config.switch_windows_hotkey.id {
@@ -227,9 +227,6 @@ impl App {
                         RedrawWindow(hwnd, None, HRGN::default(), RDW_ERASE | RDW_INVALIDATE)
                     };
                 }
-            }
-            WM_CREATE => {
-                debug!("Handle msg=WM_CREATE");
             }
             WM_COMMAND => {
                 let value = wparam.0 as u32;
@@ -275,7 +272,7 @@ impl App {
         match windows.get(&module_path) {
             None => Ok(false),
             Some(windows) => {
-                debug!("switch windows {:?}", windows);
+                debug!("switch windows {module_path} {windows:?}");
                 let windows_len = windows.len();
                 if windows_len == 1 {
                     return Ok(false);

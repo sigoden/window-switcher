@@ -97,6 +97,14 @@ impl Config {
         Ok(conf)
     }
 
+    pub fn to_hotkeys(&self) -> Vec<&Hotkey> {
+        let mut hotkeys = vec![&self.switch_windows_hotkey];
+        if self.switch_apps_enable {
+            hotkeys.push(&self.switch_apps_hotkey);
+        }
+        hotkeys
+    }
+
     pub fn to_bool(v: &str) -> Option<bool> {
         match v {
             "yes" | "true" | "on" | "1" => Some(true),

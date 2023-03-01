@@ -69,10 +69,7 @@ impl App {
         let hwnd = Self::create_window()?;
 
         let _foreground_watcher = ForegroundWatcher::init(&config.switch_windows_blacklist)?;
-        let _keyboard_listener = KeyboardListener::init(
-            hwnd,
-            &[&config.switch_windows_hotkey, &config.switch_apps_hotkey],
-        )?;
+        let _keyboard_listener = KeyboardListener::init(hwnd, &config.to_hotkeys())?;
 
         let trayicon = match config.trayicon {
             true => Some(TrayIcon::create()),

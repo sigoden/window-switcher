@@ -18,9 +18,9 @@ use windows::Win32::UI::Shell::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GetAncestor, GetForegroundWindow, GetLastActivePopup, GetTitleBarInfo,
-    GetWindowLongPtrW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
-    SetWindowPos, ShowWindow, GA_ROOTOWNER, GWL_EXSTYLE, GWL_USERDATA, HICON, SWP_NOZORDER,
-    SW_RESTORE, TITLEBARINFO, WS_EX_TOPMOST,
+    GetWindowLongPtrW, GetWindowPlacement, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+    SetForegroundWindow, SetWindowPos, ShowWindow, GA_ROOTOWNER, GWL_EXSTYLE, GWL_USERDATA, HICON,
+    SWP_NOZORDER, SW_RESTORE, TITLEBARINFO, WINDOWPLACEMENT, WS_EX_TOPMOST,
 };
 
 use std::path::PathBuf;
@@ -87,21 +87,21 @@ pub fn get_basename(path: &str) -> String {
     path.split('\\').last().unwrap_or_default().to_lowercase()
 }
 
-pub fn is_iconic(hwnd: HWND) -> bool {
+pub fn is_iconic_window(hwnd: HWND) -> bool {
     unsafe { IsIconic(hwnd) }.as_bool()
 }
 
-pub fn is_window_visible(hwnd: HWND) -> bool {
+pub fn is_visible_window(hwnd: HWND) -> bool {
     let ret = unsafe { IsWindowVisible(hwnd) };
     ret.as_bool()
 }
 
-pub fn is_window_topmost(hwnd: HWND) -> bool {
+pub fn is_topmost_window(hwnd: HWND) -> bool {
     let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
     ex_style & WS_EX_TOPMOST.0 != 0
 }
 
-pub fn is_window_cloaked(hwnd: HWND) -> bool {
+pub fn is_cloaked_window(hwnd: HWND) -> bool {
     let mut cloaked = 0u32;
     let _ = unsafe {
         DwmGetWindowAttribute(
@@ -125,14 +125,14 @@ pub fn is_popup_window(hwnd: HWND) -> bool {
         wnd_walk = hwnd_try;
         hwnd_try = unsafe { GetLastActivePopup(wnd_walk) };
 
-        if is_window_visible(hwnd_try) {
+        if is_visible_window(hwnd_try) {
             break;
         }
     }
     wnd_walk != hwnd
 }
 
-pub fn is_special_window(hwnd: HWND) -> bool {
+pub fn is_system_window(hwnd: HWND) -> bool {
     // like task tray programs and "Program Manager"
     let mut ti: TITLEBARINFO = TITLEBARINFO {
         cbSize: size_of::<TITLEBARINFO>() as u32,
@@ -146,13 +146,20 @@ pub fn is_special_window(hwnd: HWND) -> bool {
     ti.rgstate[0] & STATE_SYSTEM_INVISIBLE.0 != 0
 }
 
+pub fn is_small_window(hwnd: HWND) -> bool {
+    let mut placement = WINDOWPLACEMENT::default();
+    unsafe { GetWindowPlacement(hwnd, &mut placement) };
+    let rect = placement.rcNormalPosition;
+    (rect.right - rect.left) * (rect.bottom - rect.top) < 250
+}
+
 pub fn get_foreground_window() -> HWND {
     unsafe { GetForegroundWindow() }
 }
 
 pub fn set_foregound_window(hwnd: HWND) -> Result<()> {
     unsafe {
-        if is_iconic(hwnd) {
+        if is_iconic_window(hwnd) {
             ShowWindow(hwnd, SW_RESTORE);
         }
         if hwnd == get_foreground_window() {
@@ -197,6 +204,7 @@ pub fn list_windows(is_switch_apps: bool) -> Result<IndexMap<String, Vec<isize>>
     };
     unsafe { EnumWindows(Some(enum_window), LPARAM(&mut data as *mut _ as isize)).ok() }
         .map_err(|e| anyhow!("Fail to get windows {}", e))?;
+    debug!("list windows {:?} {is_switch_apps}", data.windows);
     Ok(data.windows)
 }
 
@@ -208,13 +216,15 @@ struct EnumWindowsData {
 
 extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let state: &mut EnumWindowsData = unsafe { &mut *(lparam.0 as *mut _) };
-    if state.is_switch_apps && (is_iconic(hwnd) || is_window_topmost(hwnd)) {
+    if state.is_switch_apps
+        && (is_iconic_window(hwnd) || is_topmost_window(hwnd) || is_small_window(hwnd))
+    {
         return BOOL(1);
     }
-    if !is_window_visible(hwnd)
-        || is_window_cloaked(hwnd)
+    if !is_visible_window(hwnd)
+        || is_cloaked_window(hwnd)
         || is_popup_window(hwnd)
-        || is_special_window(hwnd)
+        || is_system_window(hwnd)
     {
         return BOOL(1);
     }

@@ -54,7 +54,7 @@ pub fn get_module_path(pid: u32) -> String {
         match unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, None, pid) } {
             Ok(v) => v,
             Err(_) => {
-                return String::default();
+                return String::new();
             }
         };
     let mut len: u32 = 1024;
@@ -132,7 +132,7 @@ pub fn is_popup_window(hwnd: HWND) -> bool {
     wnd_walk != hwnd
 }
 
-pub fn is_system_window(hwnd: HWND) -> bool {
+pub fn is_special_window(hwnd: HWND) -> bool {
     // like task tray programs and "Program Manager"
     let mut ti: TITLEBARINFO = TITLEBARINFO {
         cbSize: size_of::<TITLEBARINFO>() as u32,
@@ -217,15 +217,14 @@ struct EnumWindowsData {
 extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let state: &mut EnumWindowsData = unsafe { &mut *(lparam.0 as *mut _) };
     if state.is_switch_apps
-        && (is_iconic_window(hwnd) || is_topmost_window(hwnd) || is_small_window(hwnd))
+        && (is_iconic_window(hwnd)
+            || is_topmost_window(hwnd)
+            || is_small_window(hwnd)
+            || is_special_window(hwnd))
     {
         return BOOL(1);
     }
-    if !is_visible_window(hwnd)
-        || is_cloaked_window(hwnd)
-        || is_popup_window(hwnd)
-        || is_system_window(hwnd)
-    {
+    if !is_visible_window(hwnd) || is_cloaked_window(hwnd) || is_popup_window(hwnd) {
         return BOOL(1);
     }
     let pid = get_window_pid(hwnd);

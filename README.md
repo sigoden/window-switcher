@@ -4,18 +4,18 @@ MacOS-like window switcher for Windows OS.
 
 1. Switch between windows of the same app with ``` alt+` ```
 
-![switch-windows](https://user-images.githubusercontent.com/4012553/221805510-ee6a4f2e-e527-4f63-b4a0-080a447d176d.gif)
+![switch-windows](https://user-images.githubusercontent.com/4012553/222900407-e62c4407-414c-40b9-86b1-112d0e227cde.gif)
 
 2. Switch open apps with `alt+tab`
 
 ![switch-apps](https://user-images.githubusercontent.com/4012553/221538853-b4793205-23a6-4a27-9f3c-4ff519cd6650.gif)
 
-## Features
+⚠️ **This feature is turned off by default. You need to add the following configuration to enable.** ⚠️
 
-- 350k single-file application that can be downloaded from [Github Release](https://github.com/sigoden/windows-switcher/releases), run without installation.
-- Support for custom keybindings.
-- Support blacklist apps to avoid hotkey override.
-- Easily turn on/off `run on startup` using the tray menu.
+```ini
+[switch-apps]
+enable = yes
+```
 
 ## Configuration
 
@@ -45,9 +45,7 @@ enable = no
 hotkey = alt+tab
 ```
 
-⚠️ **You must manually configure `switch-apps.enable=yes` to enable `alt+tab` to switch open apps.** ⚠️
-
-⚠️ **After changing the configuration, you need to restart for the new configuration to take effect.** ⚠️
+⚠️ **After changing the configuration, you need to restart.** ⚠️
 
 ## License
 

@@ -17,6 +17,10 @@ MacOS-like window switcher for Windows OS.
 enable = yes
 ```
 
+## Install
+
+Download from [Github Release](https://github.com/sigoden/windows-switcher/releases), unzip `window-switcher.exe`, click to run directly without installation.
+
 ## Configuration
 
 You can configure window-switcher by creating a `window-switcher.ini` file in the same directory as `window-switcher.exe`.

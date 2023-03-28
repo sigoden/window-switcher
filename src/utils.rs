@@ -150,7 +150,7 @@ pub fn is_small_window(hwnd: HWND) -> bool {
     let mut placement = WINDOWPLACEMENT::default();
     unsafe { GetWindowPlacement(hwnd, &mut placement) };
     let rect = placement.rcNormalPosition;
-    (rect.right - rect.left) * (rect.bottom - rect.top) < 250
+    (rect.right - rect.left) * (rect.bottom - rect.top) < 5000
 }
 
 pub fn get_foreground_window() -> HWND {
@@ -216,15 +216,15 @@ struct EnumWindowsData {
 
 extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let state: &mut EnumWindowsData = unsafe { &mut *(lparam.0 as *mut _) };
-    if state.is_switch_apps
-        && (is_iconic_window(hwnd)
-            || is_topmost_window(hwnd)
-            || is_small_window(hwnd)
-            || is_special_window(hwnd))
+    if !is_visible_window(hwnd)
+        || is_special_window(hwnd)
+        || is_small_window(hwnd)
+        || is_cloaked_window(hwnd)
+        || is_popup_window(hwnd)
     {
         return BOOL(1);
     }
-    if !is_visible_window(hwnd) || is_cloaked_window(hwnd) || is_popup_window(hwnd) {
+    if state.is_switch_apps && (is_iconic_window(hwnd) || is_topmost_window(hwnd)) {
         return BOOL(1);
     }
     let pid = get_window_pid(hwnd);

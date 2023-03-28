@@ -1,11 +1,6 @@
-[workspace]
-members = [
-    "tools/inspect-windows"
-]
-
 [package]
-name = "window-switcher"
-version = "0.11.0"
+name = "inspect-windows"
+version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -13,10 +8,8 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 indexmap = "1.9.2"
-log = "0.4.17"
-once_cell = "1.17.1"
-rust-ini = "0.18.0"
-simple-logging = "2.0.2"
+prettytable = "0.10.0"
+window-switcher = { path = "../.."}
 
 [dependencies.windows]
 version = "0.44.0"
@@ -36,11 +29,3 @@ features = [
     "Win32_System_Threading",
     "Win32_Storage_FileSystem",
 ]
-
-[build-dependencies]
-embed-resource = "1.6.5"
-
-[profile.release]
-lto = true
-strip = true
-opt-level = "z"

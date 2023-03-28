@@ -1,11 +1,6 @@
-[workspace]
-members = [
-    "tools/inspect-windows"
-]
-
 [package]
 name = "window-switcher"
-version = "0.11.0"
+version = "0.12.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -44,3 +39,8 @@ embed-resource = "1.6.5"
 lto = true
 strip = true
 opt-level = "z"
+
+[workspace]
+members = [
+    "tools/inspect-windows"
+]

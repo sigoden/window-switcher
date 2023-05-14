@@ -41,6 +41,9 @@ impl ForegroundWatcher {
         if hook.is_invalid() {
             bail!("Failed to watch foreground");
         }
+
+        info!("foreground watcher start");
+
         Ok(Self { hook })
     }
 }

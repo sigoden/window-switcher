@@ -30,6 +30,7 @@ impl KeyboardListener {
             SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), hinstance, 0)
         }
         .map_err(|err| anyhow!("Failed to set windows hook, {err}"))?;
+        info!("keyboard listener start");
         unsafe {
             KEYBOARD_STATE = hotkeys
                 .iter()
@@ -63,6 +64,7 @@ struct HotKeyState {
 
 unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     let kbd_data: &KBDLLHOOKSTRUCT = &*(l_param.0 as *const _);
+    debug!("keyboard {kbd_data:?}");
     let vk_code = VIRTUAL_KEY(kbd_data.vkCode as _);
     let mut is_modifier = false;
     let is_key_pressed = || kbd_data.flags.0 & 128 == 0;

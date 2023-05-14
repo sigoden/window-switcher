@@ -196,6 +196,7 @@ impl App {
                 return Ok(LRESULT(0));
             }
             WM_USER_MODIFIER_KEYUP => {
+                debug!("message WM_USER_MODIFIER_KEYUP {}", wparam.0);
                 let app = get_app(hwnd)?;
                 let modifier = wparam.0 as u16;
                 if modifier == app.config.switch_windows_hotkey.modifier.0 {
@@ -214,6 +215,7 @@ impl App {
                 }
             }
             WM_USER_HOOTKEY => {
+                debug!("message WM_USER_HOOTKEY {}", wparam.0);
                 let app = get_app(hwnd)?;
                 let hotkey_id = wparam.0 as u32;
                 if hotkey_id == app.config.switch_windows_hotkey.id {
@@ -259,6 +261,7 @@ impl App {
     }
 
     pub fn switch_windows(&mut self) -> Result<bool> {
+        debug!("switch windows enter {:?}", self.switch_apps_state);
         let windows = list_windows(false)?;
         let foreground_window = get_foreground_window();
         let foreground_pid = get_window_pid(foreground_window);
@@ -302,7 +305,10 @@ impl App {
                     modifier_released: false,
                 };
                 let hwnd = HWND(windows[index]);
-                debug!("{:?} {:?}", hwnd, self.switch_windows_state);
+                debug!(
+                    "switch windows done {:?} {:?}",
+                    hwnd, self.switch_windows_state
+                );
                 set_foregound_window(hwnd)?;
 
                 Ok(true)
@@ -311,6 +317,7 @@ impl App {
     }
 
     fn switch_apps(&mut self) -> Result<()> {
+        debug!("switch apps enter {:?}", self.switch_apps_state);
         if let Some(state) = self.switch_apps_state.as_mut() {
             if state.index + 1 < state.apps.len() {
                 state.index += 1;
@@ -381,6 +388,7 @@ impl App {
             index,
             icon_size,
         });
+        debug!("switch apps done {:?}", self.switch_apps_state);
         Ok(())
     }
 

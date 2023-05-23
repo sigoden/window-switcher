@@ -7,7 +7,7 @@ use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_SZ, REG_VALUE_TYPE, RRF_RT_REG_SZ,
 };
 
-use crate::utils::{get_exe_path, BUFFER_SIZE};
+use crate::utils::get_exe_path;
 
 const HKEY_RUN: PCWSTR = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
 const HKEY_NAME: PCWSTR = w!("Window Switcher");
@@ -94,8 +94,8 @@ fn get_key() -> Result<WrapHKey> {
 }
 
 fn get_value(hkey: &HKEY) -> Result<Option<Vec<u16>>> {
-    let mut buffer: [u16; BUFFER_SIZE] = [0; BUFFER_SIZE];
-    let mut size = (BUFFER_SIZE * std::mem::size_of_val(&buffer[0])) as u32;
+    let mut buffer = [0u16; 1024];
+    let mut size: u32 = (1024 * std::mem::size_of_val(&buffer[0])) as u32;
     let mut kind: REG_VALUE_TYPE = Default::default();
     let ret = unsafe {
         RegGetValueW(

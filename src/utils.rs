@@ -12,7 +12,6 @@ use windows::Win32::System::Threading::{
     PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
 };
 use windows::Win32::UI::Controls::STATE_SYSTEM_INVISIBLE;
-use windows::Win32::UI::Input::KeyboardAndMouse::{RegisterHotKey, UnregisterHotKey, MOD_NOREPEAT};
 use windows::Win32::UI::Shell::{
     SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
 };
@@ -26,7 +25,6 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use std::path::PathBuf;
 use std::{ffi::c_void, mem::size_of};
 
-use crate::config::Hotkey;
 pub const BUFFER_SIZE: usize = 1024;
 
 pub fn get_exe_folder() -> Result<PathBuf> {
@@ -231,25 +229,6 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let module_path = get_module_path(pid);
     state.windows.entry(module_path).or_default().push(hwnd.0);
     BOOL(1)
-}
-
-pub fn register_hotkey(hwnd: HWND, hotkey: &Hotkey) -> Result<()> {
-    unsafe {
-        RegisterHotKey(
-            hwnd,
-            hotkey.id as i32,
-            hotkey.modifiers() | MOD_NOREPEAT,
-            hotkey.code as u32,
-        )
-    }
-    .ok()
-    .map_err(|e| anyhow!("Fail to register {} hotkey, {e}", hotkey.name))
-}
-
-pub fn unregister_hotkey(hwnd: HWND, hotkey: &Hotkey) -> Result<()> {
-    unsafe { UnregisterHotKey(hwnd, hotkey.id as i32) }
-        .ok()
-        .map_err(|e| anyhow!("Fail to unregister {} hotkey, {e}", hotkey.name))
 }
 
 #[cfg(target_arch = "x86")]

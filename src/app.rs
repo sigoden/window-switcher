@@ -199,10 +199,10 @@ impl App {
                 debug!("message WM_USER_MODIFIER_KEYUP {}", wparam.0);
                 let app = get_app(hwnd)?;
                 let modifier = wparam.0 as u16;
-                if modifier == app.config.switch_windows_hotkey.modifier.0 {
+                if modifier == app.config.switch_windows_hotkey.get_modifier() {
                     app.switch_windows_state.modifier_released = true;
                 }
-                if modifier == app.config.switch_apps_hotkey.modifier.0 {
+                if modifier == app.config.switch_apps_hotkey.get_modifier() {
                     if let Some(state) = app.switch_apps_state.take() {
                         if let Some((_, id)) = state.apps.get(state.index) {
                             set_foregound_window(HWND(*id))?;

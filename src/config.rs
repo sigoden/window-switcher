@@ -4,7 +4,7 @@ use anyhow::{anyhow, Result};
 use ini::Ini;
 use log::LevelFilter;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    HOT_KEY_MODIFIERS, MOD_ALT, MOD_CONTROL, MOD_WIN, VIRTUAL_KEY, VK_LCONTROL, VK_LMENU, VK_LWIN,
+    VIRTUAL_KEY, VK_LCONTROL, VK_LMENU, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RWIN,
 };
 
 use crate::utils::get_exe_folder;
@@ -118,7 +118,7 @@ impl Config {
 pub struct Hotkey {
     pub id: u32,
     pub name: String,
-    pub modifier: VIRTUAL_KEY,
+    pub modifier: [VIRTUAL_KEY; 2],
     pub code: u16,
 }
 
@@ -134,25 +134,20 @@ impl Hotkey {
         })
     }
 
-    pub fn modifiers(&self) -> HOT_KEY_MODIFIERS {
-        match self.modifier {
-            VK_LMENU => MOD_ALT,
-            VK_LCONTROL => MOD_CONTROL,
-            VK_LWIN => MOD_WIN,
-            _ => Default::default(),
-        }
+    pub fn get_modifier(&self) -> u16 {
+        self.modifier[0].0
     }
 
-    pub fn parse(value: &str) -> Option<(VIRTUAL_KEY, u16)> {
+    pub fn parse(value: &str) -> Option<([VIRTUAL_KEY; 2], u16)> {
         let value = value.to_ascii_lowercase().replace(' ', "");
         let keys: Vec<&str> = value.split('+').collect();
         if keys.len() != 2 {
             return None;
         }
         let modifier = match keys[0] {
-            "win" => VK_LWIN,
-            "alt" => VK_LMENU,
-            "ctrl" => VK_LCONTROL,
+            "win" => [VK_LWIN, VK_RWIN],
+            "alt" => [VK_LMENU, VK_RMENU],
+            "ctrl" => [VK_LCONTROL, VK_RCONTROL],
             _ => {
                 return None;
             }
@@ -256,7 +251,10 @@ mod tests {
 
     #[test]
     fn test_hotkey() {
-        assert_eq!(Hotkey::parse("alt + `"), Some((VK_LMENU, 0xc0)));
-        assert_eq!(Hotkey::parse("alt + tab"), Some((VK_LMENU, 0x09)));
+        assert_eq!(Hotkey::parse("alt + `"), Some(([VK_LMENU, VK_RMENU], 0xc0)));
+        assert_eq!(
+            Hotkey::parse("alt + tab"),
+            Some(([VK_LMENU, VK_RMENU], 0x09))
+        );
     }
 }

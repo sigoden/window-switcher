@@ -69,7 +69,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
     let mut is_modifier = false;
     let is_key_pressed = || kbd_data.flags.0 & 128 == 0;
     for state in KEYBOARD_STATE.iter_mut() {
-        if vk_code == state.hotkey.modifier {
+        if state.hotkey.modifier.contains(&vk_code) {
             is_modifier = true;
             if is_key_pressed() {
                 state.is_modifier_pressed = true;
@@ -79,7 +79,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
                     SendMessageW(
                         WINDOW,
                         WM_USER_MODIFIER_KEYUP,
-                        WPARAM(vk_code.0 as _),
+                        WPARAM(state.hotkey.get_modifier() as _),
                         LPARAM(0),
                     )
                 };

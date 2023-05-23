@@ -261,7 +261,7 @@ pub fn set_window_user_data(hwnd: HWND, ptr: isize) -> isize {
 
 #[cfg(target_arch = "x86")]
 pub fn get_class_icon(hwnd: HWND) -> u32 {
-    unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongW(hwnd, GWL_USERDATA) }
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongW(hwnd, GCL_HICON) }
 }
 #[cfg(target_arch = "x86_64")]
 pub fn get_class_icon(hwnd: HWND) -> usize {

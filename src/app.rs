@@ -333,21 +333,22 @@ impl App {
         let windows = list_windows(true)?;
         let mut apps = vec![];
         for (module_path, hwnds) in windows.iter() {
-            let hwnd = hwnds[0];
+            let module_hwnd = hwnds[0];
+            let mut module_hicon = None;
             if module_path.starts_with("C:\\Program Files\\WindowsApps") {
-                let mut hicon = None;
                 if let Some(data) = self.uwp_icons.get(module_path) {
-                    hicon = create_hicon_from_resource(data)
+                    module_hicon = create_hicon_from_resource(data)
                 } else if let Some(data) = get_uwp_icon_data(module_path) {
-                    hicon = create_hicon_from_resource(&data);
+                    module_hicon = create_hicon_from_resource(&data);
                     self.uwp_icons.insert(module_path.clone(), data);
                 }
-                if let Some(hicon) = hicon {
-                    apps.push((hicon, hwnd));
-                }
-            } else if let Some(hicon) = get_module_icon(hwnds[0]) {
-                apps.push((hicon, hwnd));
-            };
+            }
+            if module_hicon.is_none() {
+                module_hicon = get_module_icon(module_hwnd);
+            }
+            if let Some(hicon) = module_hicon {
+                apps.push((hicon, module_hwnd));
+            }
         }
         let num_apps = apps.len() as i32;
         if num_apps == 0 {

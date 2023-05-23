@@ -14,12 +14,12 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::Controls::STATE_SYSTEM_INVISIBLE;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateIconFromResourceEx, EnumChildWindows, EnumWindows, GetAncestor, GetClassLongPtrW,
-    GetForegroundWindow, GetLastActivePopup, GetTitleBarInfo, GetWindowLongPtrW,
-    GetWindowPlacement, GetWindowThreadProcessId, IsIconic, IsWindowVisible, LoadIconW,
-    SendMessageW, SetForegroundWindow, SetWindowPos, ShowWindow, GA_ROOTOWNER, GCL_HICON,
-    GWL_EXSTYLE, GWL_USERDATA, HICON, ICON_BIG, IDI_APPLICATION, LR_DEFAULTCOLOR, SWP_NOZORDER,
-    SW_RESTORE, TITLEBARINFO, WINDOWPLACEMENT, WM_GETICON, WS_EX_TOPMOST,
+    CreateIconFromResourceEx, EnumChildWindows, EnumWindows, GetAncestor, GetForegroundWindow,
+    GetLastActivePopup, GetTitleBarInfo, GetWindowLongPtrW, GetWindowPlacement,
+    GetWindowThreadProcessId, IsIconic, IsWindowVisible, LoadIconW, SendMessageW,
+    SetForegroundWindow, SetWindowPos, ShowWindow, GA_ROOTOWNER, GCL_HICON, GWL_EXSTYLE,
+    GWL_USERDATA, HICON, ICON_BIG, IDI_APPLICATION, LR_DEFAULTCOLOR, SWP_NOZORDER, SW_RESTORE,
+    TITLEBARINFO, WINDOWPLACEMENT, WM_GETICON, WS_EX_TOPMOST,
 };
 
 use std::fs::{read_dir, File};
@@ -188,7 +188,7 @@ pub fn get_module_icon(hwnd: HWND) -> Option<HICON> {
         return Some(HICON(ret));
     }
 
-    let ret = unsafe { GetClassLongPtrW(hwnd, GCL_HICON) };
+    let ret = get_class_icon(hwnd);
     if ret != 0 {
         return Some(HICON(ret as _));
     }
@@ -241,22 +241,31 @@ pub fn list_windows(is_switch_apps: bool) -> Result<IndexMap<String, Vec<HWND>>>
 }
 
 #[cfg(target_arch = "x86")]
-pub fn get_window_ptr(hwnd: HWND) -> i32 {
+pub fn get_window_user_data(hwnd: HWND) -> i32 {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowLongW(hwnd, GWL_USERDATA) }
 }
 #[cfg(target_arch = "x86_64")]
-pub fn get_window_ptr(hwnd: HWND) -> isize {
+pub fn get_window_user_data(hwnd: HWND) -> isize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWL_USERDATA) }
 }
 
 #[cfg(target_arch = "x86")]
-pub fn set_window_ptr(hwnd: HWND, ptr: i32) -> i32 {
+pub fn set_window_user_data(hwnd: HWND, ptr: i32) -> i32 {
     unsafe { windows::Win32::UI::WindowsAndMessaging::SetWindowLongW(hwnd, GWL_USERDATA, ptr) }
 }
 
 #[cfg(target_arch = "x86_64")]
-pub fn set_window_ptr(hwnd: HWND, ptr: isize) -> isize {
+pub fn set_window_user_data(hwnd: HWND, ptr: isize) -> isize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(hwnd, GWL_USERDATA, ptr) }
+}
+
+#[cfg(target_arch = "x86")]
+pub fn get_class_icon(hwnd: HWND) -> u32 {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongW(hwnd, GWL_USERDATA) }
+}
+#[cfg(target_arch = "x86_64")]
+pub fn get_class_icon(hwnd: HWND) -> usize {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongPtrW(hwnd, GCL_HICON) }
 }
 
 #[allow(unused)]

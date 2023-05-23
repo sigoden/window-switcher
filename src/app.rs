@@ -5,8 +5,8 @@ use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
     check_error, create_hicon_from_resource, get_foreground_window, get_module_icon,
-    get_module_path, get_uwp_icon_data, get_window_pid, get_window_ptr, list_windows,
-    set_foregound_window, set_window_ptr, CheckError,
+    get_module_path, get_uwp_icon_data, get_window_pid, get_window_user_data, list_windows,
+    set_foregound_window, set_window_user_data, CheckError,
 };
 
 use anyhow::{anyhow, Result};
@@ -96,7 +96,7 @@ impl App {
         app.set_trayicon()?;
 
         let app_ptr = Box::into_raw(Box::new(app)) as _;
-        check_error(|| set_window_ptr(hwnd, app_ptr))
+        check_error(|| set_window_user_data(hwnd, app_ptr))
             .map_err(|err| anyhow!("Failed to set window ptr, {err}"))?;
 
         Self::eventloop()
@@ -456,7 +456,7 @@ impl App {
 
 fn get_app(hwnd: HWND) -> Result<&'static mut App> {
     unsafe {
-        let ptr = check_error(|| get_window_ptr(hwnd))
+        let ptr = check_error(|| get_window_user_data(hwnd))
             .map_err(|err| anyhow!("Failed to get window ptr, {err}"))?;
         let tx: &mut App = &mut *(ptr as *mut _);
         Ok(tx)

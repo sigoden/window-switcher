@@ -3,6 +3,7 @@ use indexmap::IndexMap;
 use windows::core::{Error, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
     CloseHandle, SetLastError, BOOL, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, HANDLE, HWND, LPARAM,
+    TRUE, WPARAM,
 };
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL};
 use windows::Win32::System::Console::{AllocConsole, FreeConsole, GetConsoleWindow};
@@ -12,18 +13,21 @@ use windows::Win32::System::Threading::{
     PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
 };
 use windows::Win32::UI::Controls::STATE_SYSTEM_INVISIBLE;
-use windows::Win32::UI::Shell::{
-    SHGetFileInfoW, SHFILEINFOW, SHGFI_ICON, SHGFI_LARGEICON, SHGFI_USEFILEATTRIBUTES,
-};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetAncestor, GetForegroundWindow, GetLastActivePopup, GetTitleBarInfo,
-    GetWindowLongPtrW, GetWindowPlacement, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-    SetForegroundWindow, SetWindowPos, ShowWindow, GA_ROOTOWNER, GWL_EXSTYLE, GWL_USERDATA, HICON,
-    SWP_NOZORDER, SW_RESTORE, TITLEBARINFO, WINDOWPLACEMENT, WS_EX_TOPMOST,
+    CreateIconFromResourceEx, EnumChildWindows, EnumWindows, GetAncestor, GetForegroundWindow,
+    GetLastActivePopup, GetTitleBarInfo, GetWindowLongPtrW, GetWindowPlacement,
+    GetWindowThreadProcessId, IsIconic, IsWindowVisible, LoadIconW, SendMessageW,
+    SetForegroundWindow, SetWindowPos, ShowWindow, GA_ROOTOWNER, GCL_HICON, GWL_EXSTYLE,
+    GWL_USERDATA, HICON, ICON_BIG, IDI_APPLICATION, LR_DEFAULTCOLOR, SWP_NOZORDER, SW_RESTORE,
+    TITLEBARINFO, WINDOWPLACEMENT, WM_GETICON, WS_EX_TOPMOST,
 };
 
-use std::path::PathBuf;
+use std::fs::{read_dir, File};
+use std::io::{BufReader, Read};
+use std::path::{Path, PathBuf};
 use std::{ffi::c_void, mem::size_of};
+use xml::reader::XmlEvent;
+use xml::EventReader;
 
 pub const BUFFER_SIZE: usize = 1024;
 
@@ -47,7 +51,7 @@ pub fn get_window_pid(hwnd: HWND) -> u32 {
     pid
 }
 
-pub fn get_module_path(pid: u32) -> String {
+pub fn get_module_path(hwnd: HWND, pid: u32) -> String {
     let handle =
         match unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, None, pid) } {
             Ok(v) => v,
@@ -69,7 +73,11 @@ pub fn get_module_path(pid: u32) -> String {
         return String::default();
     }
     unsafe { name.set_len(len as usize) };
-    String::from_utf16_lossy(&name)
+    let mut module_path = String::from_utf16_lossy(&name);
+    if module_path.ends_with("ApplicationFrameHost.exe") {
+        module_path = get_modern_app_path(hwnd).unwrap_or_default();
+    }
+    module_path
 }
 
 pub fn get_window_exe(hwnd: HWND) -> String {
@@ -77,7 +85,7 @@ pub fn get_window_exe(hwnd: HWND) -> String {
     if pid == 0 {
         return String::new();
     }
-    let module_path = get_module_path(pid);
+    let module_path = get_module_path(hwnd, pid);
     get_basename(&module_path)
 }
 
@@ -174,28 +182,54 @@ pub fn set_foregound_window(hwnd: HWND) -> Result<()> {
     Ok(())
 }
 
-pub fn get_module_icon(module_path: &str) -> Option<HICON> {
-    let path = to_wstring(module_path);
-    let path = PCWSTR(path.as_ptr());
-
-    let mut shfi: SHFILEINFOW = Default::default();
-    let size = size_of::<SHFILEINFOW>() as u32;
-    let result = unsafe {
-        SHGetFileInfoW(
-            path,
-            Default::default(),
-            Some(&mut shfi),
-            size,
-            SHGFI_ICON | SHGFI_LARGEICON | SHGFI_USEFILEATTRIBUTES,
-        )
-    };
-    if result == 0 {
-        return None;
+pub fn get_module_icon(hwnd: HWND) -> Option<HICON> {
+    let ret = unsafe { SendMessageW(hwnd, WM_GETICON, WPARAM(ICON_BIG as _), None) }.0;
+    if ret != 0 {
+        return Some(HICON(ret));
     }
-    Some(shfi.hIcon)
+
+    let ret = get_class_icon(hwnd);
+    if ret != 0 {
+        return Some(HICON(ret as _));
+    }
+
+    unsafe { LoadIconW(None, IDI_APPLICATION) }.ok()
 }
 
-pub fn list_windows(is_switch_apps: bool) -> Result<IndexMap<String, Vec<isize>>> {
+pub fn get_uwp_icon_data(module_path: &str) -> Option<Vec<u8>> {
+    let module_path = PathBuf::from(module_path);
+    let module_dir = module_path.parent()?;
+    let manifest_path = module_dir.join("AppxManifest.xml");
+    let metadata_logo_path = get_appx_logo_path(&manifest_path)?;
+    let metadata_logo_path = module_dir.join(metadata_logo_path);
+    let logo_dir = metadata_logo_path.parent()?;
+    let mut logo_path = None;
+    let log_basename = metadata_logo_path
+        .file_stem()?
+        .to_string_lossy()
+        .to_string();
+    for entry in read_dir(logo_dir).ok()? {
+        let entry = entry.ok()?;
+        let entry_file_name = entry.file_name().to_string_lossy().to_string();
+        if entry_file_name.starts_with(&log_basename) {
+            logo_path = Some(logo_dir.join(entry_file_name).to_string_lossy().to_string());
+            break;
+        }
+    }
+    let logo_path = logo_path?;
+    let mut logo_file = File::open(logo_path).ok()?;
+    let mut buffer = vec![];
+    logo_file.read_to_end(&mut buffer).ok()?;
+    Some(buffer)
+}
+
+pub fn create_hicon_from_resource(data: &[u8]) -> Option<HICON> {
+    unsafe { CreateIconFromResourceEx(data, TRUE, 0x30000, 100, 100, LR_DEFAULTCOLOR) }
+        .ok()
+        .or_else(|| unsafe { LoadIconW(None, IDI_APPLICATION) }.ok())
+}
+
+pub fn list_windows(is_switch_apps: bool) -> Result<IndexMap<String, Vec<HWND>>> {
     let mut data = EnumWindowsData {
         is_switch_apps,
         windows: Default::default(),
@@ -206,48 +240,32 @@ pub fn list_windows(is_switch_apps: bool) -> Result<IndexMap<String, Vec<isize>>
     Ok(data.windows)
 }
 
-#[derive(Debug)]
-struct EnumWindowsData {
-    is_switch_apps: bool,
-    windows: IndexMap<String, Vec<isize>>,
-}
-
-extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    let state: &mut EnumWindowsData = unsafe { &mut *(lparam.0 as *mut _) };
-    if !is_visible_window(hwnd)
-        || is_special_window(hwnd)
-        || is_small_window(hwnd)
-        || is_cloaked_window(hwnd)
-        || is_popup_window(hwnd)
-    {
-        return BOOL(1);
-    }
-    if state.is_switch_apps && (is_iconic_window(hwnd) || is_topmost_window(hwnd)) {
-        return BOOL(1);
-    }
-    let pid = get_window_pid(hwnd);
-    let module_path = get_module_path(pid);
-    state.windows.entry(module_path).or_default().push(hwnd.0);
-    BOOL(1)
-}
-
 #[cfg(target_arch = "x86")]
-pub fn get_window_ptr(hwnd: HWND) -> i32 {
+pub fn get_window_user_data(hwnd: HWND) -> i32 {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowLongW(hwnd, GWL_USERDATA) }
 }
 #[cfg(target_arch = "x86_64")]
-pub fn get_window_ptr(hwnd: HWND) -> isize {
+pub fn get_window_user_data(hwnd: HWND) -> isize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWL_USERDATA) }
 }
 
 #[cfg(target_arch = "x86")]
-pub fn set_window_ptr(hwnd: HWND, ptr: i32) -> i32 {
+pub fn set_window_user_data(hwnd: HWND, ptr: i32) -> i32 {
     unsafe { windows::Win32::UI::WindowsAndMessaging::SetWindowLongW(hwnd, GWL_USERDATA, ptr) }
 }
 
 #[cfg(target_arch = "x86_64")]
-pub fn set_window_ptr(hwnd: HWND, ptr: isize) -> isize {
+pub fn set_window_user_data(hwnd: HWND, ptr: isize) -> isize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(hwnd, GWL_USERDATA, ptr) }
+}
+
+#[cfg(target_arch = "x86")]
+pub fn get_class_icon(hwnd: HWND) -> u32 {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongW(hwnd, GCL_HICON) }
+}
+#[cfg(target_arch = "x86_64")]
+pub fn get_class_icon(hwnd: HWND) -> usize {
+    unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongPtrW(hwnd, GCL_HICON) }
 }
 
 #[allow(unused)]
@@ -350,4 +368,92 @@ impl Drop for SingleInstance {
             }
         }
     }
+}
+
+#[derive(Debug)]
+struct EnumWindowsData {
+    is_switch_apps: bool,
+    windows: IndexMap<String, Vec<HWND>>,
+}
+
+extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let state: &mut EnumWindowsData = unsafe { &mut *(lparam.0 as *mut _) };
+    if !is_visible_window(hwnd)
+        || is_special_window(hwnd)
+        || is_small_window(hwnd)
+        || is_cloaked_window(hwnd)
+        || is_popup_window(hwnd)
+    {
+        return BOOL(1);
+    }
+    if state.is_switch_apps && (is_iconic_window(hwnd) || is_topmost_window(hwnd)) {
+        return BOOL(1);
+    }
+    let pid = get_window_pid(hwnd);
+    let module_path = get_module_path(hwnd, pid);
+    state.windows.entry(module_path).or_default().push(hwnd);
+    BOOL(1)
+}
+
+fn get_modern_app_path(hwnd: HWND) -> Option<String> {
+    let pid = get_window_pid(hwnd);
+    let mut child_windows: Vec<HWND> = vec![];
+    unsafe {
+        EnumChildWindows(
+            hwnd,
+            Some(enum_child_window),
+            LPARAM(&mut child_windows as *mut _ as isize),
+        )
+        .ok()
+        .ok()?
+    };
+    for child_hwnd in child_windows {
+        let child_pid = get_window_pid(child_hwnd);
+        if child_pid != pid {
+            return Some(get_module_path(child_hwnd, child_pid));
+        }
+    }
+    None
+}
+
+extern "system" fn enum_child_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let windows: &mut Vec<HWND> = unsafe { &mut *(lparam.0 as *mut _) };
+    windows.push(hwnd);
+    BOOL(1)
+}
+
+fn get_appx_logo_path(manifest_path: &Path) -> Option<String> {
+    let manifest_file = File::open(manifest_path).ok()?;
+    let manifest_file = BufReader::new(manifest_file); // Buffering is important for performance
+    let reader = EventReader::new(manifest_file);
+    let mut logo_path = None;
+    let mut xpaths = vec![];
+    let mut depth = 0;
+    for e in reader {
+        match e {
+            Ok(XmlEvent::StartElement { name, .. }) => {
+                if xpaths.len() == depth {
+                    xpaths.push(name.local_name.clone())
+                }
+                depth += 1;
+            }
+            Ok(XmlEvent::EndElement { .. }) => {
+                if xpaths.len() == depth {
+                    xpaths.pop();
+                }
+                depth -= 1;
+            }
+            Ok(XmlEvent::Characters(text)) => {
+                if xpaths.join("/") == "Package/Properties/Logo" {
+                    logo_path = Some(text);
+                    break;
+                }
+            }
+            Err(_) => {
+                break;
+            }
+            _ => {}
+        }
+    }
+    logo_path
 }

@@ -4,12 +4,14 @@ use crate::keyboard::KeyboardListener;
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
-    check_error, get_foreground_window, get_module_icon, get_module_path, get_window_pid,
-    get_window_ptr, list_windows, set_foregound_window, set_window_ptr, CheckError,
+    check_error, create_hicon_from_resource, get_foreground_window, get_module_icon,
+    get_module_path, get_uwp_icon_data, get_window_pid, get_window_user_data, list_windows,
+    set_foregound_window, set_window_user_data, CheckError,
 };
 
 use anyhow::{anyhow, Result};
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use windows::core::PCWSTR;
 use windows::w;
 use windows::Win32::Foundation::{
@@ -59,9 +61,9 @@ pub struct App {
     trayicon: Option<TrayIcon>,
     startup: Startup,
     config: Config,
-    // enable_hotkey: bool,
     switch_windows_state: SwitchWindowsState,
     switch_apps_state: Option<SwtichAppsState>,
+    uwp_icons: HashMap<String, Vec<u8>>,
 }
 
 impl App {
@@ -88,12 +90,13 @@ impl App {
                 modifier_released: true,
             },
             switch_apps_state: None,
+            uwp_icons: Default::default(),
         };
 
         app.set_trayicon()?;
 
         let app_ptr = Box::into_raw(Box::new(app)) as _;
-        check_error(|| set_window_ptr(hwnd, app_ptr))
+        check_error(|| set_window_user_data(hwnd, app_ptr))
             .map_err(|err| anyhow!("Failed to set window ptr, {err}"))?;
 
         Self::eventloop()
@@ -205,7 +208,7 @@ impl App {
                 if modifier == app.config.switch_apps_hotkey.get_modifier() {
                     if let Some(state) = app.switch_apps_state.take() {
                         if let Some((_, id)) = state.apps.get(state.index) {
-                            set_foregound_window(HWND(*id))?;
+                            set_foregound_window(*id)?;
                         }
                         for (hicon, _) in state.apps {
                             unsafe { DestroyIcon(hicon) };
@@ -265,7 +268,7 @@ impl App {
         let windows = list_windows(false)?;
         let foreground_window = get_foreground_window();
         let foreground_pid = get_window_pid(foreground_window);
-        let module_path = get_module_path(foreground_pid);
+        let module_path = get_module_path(foreground_window, foreground_pid);
         if module_path.is_empty() {
             return Ok(false);
         }
@@ -304,7 +307,7 @@ impl App {
                     cache: Some((module_path, state_id, index)),
                     modifier_released: false,
                 };
-                let hwnd = HWND(windows[index]);
+                let hwnd = windows[index];
                 debug!(
                     "switch windows done {:?} {:?}",
                     hwnd, self.switch_windows_state
@@ -329,9 +332,22 @@ impl App {
         let hwnd = self.hwnd;
         let windows = list_windows(true)?;
         let mut apps = vec![];
-        for module_path in windows.keys() {
-            if let Some(hicon) = get_module_icon(module_path) {
-                apps.push((hicon, windows[module_path][0]))
+        for (module_path, hwnds) in windows.iter() {
+            let module_hwnd = hwnds[0];
+            let mut module_hicon = None;
+            if module_path.starts_with("C:\\Program Files\\WindowsApps") {
+                if let Some(data) = self.uwp_icons.get(module_path) {
+                    module_hicon = create_hicon_from_resource(data)
+                } else if let Some(data) = get_uwp_icon_data(module_path) {
+                    module_hicon = create_hicon_from_resource(&data);
+                    self.uwp_icons.insert(module_path.clone(), data);
+                }
+            }
+            if module_hicon.is_none() {
+                module_hicon = get_module_icon(module_hwnd);
+            }
+            if let Some(hicon) = module_hicon {
+                apps.push((hicon, module_hwnd));
             }
         }
         let num_apps = apps.len() as i32;
@@ -441,7 +457,7 @@ impl App {
 
 fn get_app(hwnd: HWND) -> Result<&'static mut App> {
     unsafe {
-        let ptr = check_error(|| get_window_ptr(hwnd))
+        let ptr = check_error(|| get_window_user_data(hwnd))
             .map_err(|err| anyhow!("Failed to get window ptr, {err}"))?;
         let tx: &mut App = &mut *(ptr as *mut _);
         Ok(tx)
@@ -450,13 +466,13 @@ fn get_app(hwnd: HWND) -> Result<&'static mut App> {
 
 #[derive(Debug)]
 struct SwitchWindowsState {
-    cache: Option<(String, isize, usize)>,
+    cache: Option<(String, HWND, usize)>,
     modifier_released: bool,
 }
 
 #[derive(Debug)]
 struct SwtichAppsState {
-    apps: Vec<(HICON, isize)>,
+    apps: Vec<(HICON, HWND)>,
     index: usize,
     icon_size: i32,
 }

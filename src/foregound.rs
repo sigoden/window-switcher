@@ -66,10 +66,10 @@ unsafe extern "system" fn win_event_proc(
     _dw_event_thread: u32,
     _dwms_event_time: u32,
 ) {
-    let exe = get_window_exe(hwnd);
-    if exe.is_empty() {
-        return;
-    }
+    let exe = match get_window_exe(hwnd) {
+        Some(v) => v,
+        None => return,
+    };
     IS_FOREGROUND_IN_BLACKLIST = BLACKLIST.get().unwrap().contains(&exe);
     debug!("foreground {exe} {IS_FOREGROUND_IN_BLACKLIST}");
 }

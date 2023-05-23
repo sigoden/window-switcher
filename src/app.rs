@@ -268,10 +268,10 @@ impl App {
         let windows = list_windows(false)?;
         let foreground_window = get_foreground_window();
         let foreground_pid = get_window_pid(foreground_window);
-        let module_path = get_module_path(foreground_window, foreground_pid);
-        if module_path.is_empty() {
-            return Ok(false);
-        }
+        let module_path = match get_module_path(foreground_window, foreground_pid) {
+            Some(v) => v,
+            None => return Ok(false),
+        };
         match windows.get(&module_path) {
             None => Ok(false),
             Some(windows) => {

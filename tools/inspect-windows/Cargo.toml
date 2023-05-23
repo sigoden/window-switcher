@@ -8,7 +8,6 @@ edition = "2021"
 [dependencies]
 anyhow = "1"
 indexmap = "1.9.2"
-prettytable = "0.10.0"
 window-switcher = { path = "../.."}
 
 [dependencies.windows]

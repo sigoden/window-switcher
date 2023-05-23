@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use windows::core::{Error, PCWSTR, PWSTR};
 use windows::Win32::Foundation::{
     CloseHandle, SetLastError, BOOL, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, HANDLE, HWND, LPARAM,
-    TRUE, WPARAM,
+    RECT, TRUE, WPARAM,
 };
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL};
 use windows::Win32::System::Console::{AllocConsole, FreeConsole, GetConsoleWindow};
@@ -15,7 +15,7 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::Controls::STATE_SYSTEM_INVISIBLE;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, EnumChildWindows, EnumWindows, GetAncestor, GetForegroundWindow,
-    GetLastActivePopup, GetTitleBarInfo, GetWindowLongPtrW, GetWindowPlacement,
+    GetLastActivePopup, GetTitleBarInfo, GetWindowLongPtrW, GetWindowPlacement, GetWindowTextW,
     GetWindowThreadProcessId, IsIconic, IsWindowVisible, LoadIconW, SendMessageW,
     SetForegroundWindow, SetWindowPos, ShowWindow, GA_ROOTOWNER, GCL_HICON, GWL_EXSTYLE,
     GWL_USERDATA, HICON, ICON_BIG, IDI_APPLICATION, LR_DEFAULTCOLOR, SWP_NOZORDER, SW_RESTORE,
@@ -51,13 +51,11 @@ pub fn get_window_pid(hwnd: HWND) -> u32 {
     pid
 }
 
-pub fn get_module_path(hwnd: HWND, pid: u32) -> String {
+pub fn get_module_path(hwnd: HWND, pid: u32) -> Option<String> {
     let handle =
         match unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, None, pid) } {
             Ok(v) => v,
-            Err(_) => {
-                return String::new();
-            }
+            Err(_) => return None,
         };
     let mut len: u32 = 1024;
     let mut name = vec![0u16; len as usize];
@@ -70,27 +68,31 @@ pub fn get_module_path(hwnd: HWND, pid: u32) -> String {
         )
     };
     if !ret.as_bool() || len == 0 {
-        return String::default();
+        return None;
     }
     unsafe { name.set_len(len as usize) };
-    let mut module_path = String::from_utf16_lossy(&name);
-    if module_path.ends_with("ApplicationFrameHost.exe") {
-        module_path = get_modern_app_path(hwnd).unwrap_or_default();
+    let module_path = String::from_utf16_lossy(&name);
+    if module_path.is_empty() {
+        return None;
     }
-    module_path
+    if module_path.ends_with("ApplicationFrameHost.exe") {
+        get_modern_app_path(hwnd)
+    } else {
+        Some(module_path)
+    }
 }
 
-pub fn get_window_exe(hwnd: HWND) -> String {
+pub fn get_window_exe(hwnd: HWND) -> Option<String> {
     let pid = get_window_pid(hwnd);
     if pid == 0 {
-        return String::new();
+        return None;
     }
-    let module_path = get_module_path(hwnd, pid);
+    let module_path = get_module_path(hwnd, pid)?;
     get_basename(&module_path)
 }
 
-pub fn get_basename(path: &str) -> String {
-    path.split('\\').last().unwrap_or_default().to_lowercase()
+pub fn get_basename(path: &str) -> Option<String> {
+    path.split('\\').map(|v| v.to_string()).last()
 }
 
 pub fn is_iconic_window(hwnd: HWND) -> bool {
@@ -153,14 +155,46 @@ pub fn is_special_window(hwnd: HWND) -> bool {
 }
 
 pub fn is_small_window(hwnd: HWND) -> bool {
-    let mut placement = WINDOWPLACEMENT::default();
-    unsafe { GetWindowPlacement(hwnd, &mut placement) };
-    let rect = placement.rcNormalPosition;
-    (rect.right - rect.left) * (rect.bottom - rect.top) < 5000
+    let rect = get_window_rect(hwnd);
+    (rect.right - rect.left) < 150 || (rect.bottom - rect.top) < 50
+}
+
+pub fn is_show_window(hwnd: HWND) -> bool {
+    if !is_visible_window(hwnd) {
+        return false;
+    }
+    if is_small_window(hwnd) {
+        return false;
+    }
+    if is_special_window(hwnd) {
+        return false;
+    }
+    if is_topmost_window(hwnd) {
+        return false;
+    }
+    if is_cloaked_window(hwnd) {
+        return false;
+    }
+    true
 }
 
 pub fn get_foreground_window() -> HWND {
     unsafe { GetForegroundWindow() }
+}
+
+pub fn get_window_title(hwnd: HWND) -> String {
+    let mut buf = [0u16; 512];
+    let len = unsafe { GetWindowTextW(hwnd, buf.as_mut_slice()) };
+    if len == 0 {
+        return String::new();
+    }
+    String::from_utf16_lossy(&buf[..len as usize])
+}
+
+pub fn get_window_rect(hwnd: HWND) -> RECT {
+    let mut placement = WINDOWPLACEMENT::default();
+    unsafe { GetWindowPlacement(hwnd, &mut placement) };
+    placement.rcNormalPosition
 }
 
 pub fn set_foregound_window(hwnd: HWND) -> Result<()> {
@@ -229,14 +263,14 @@ pub fn create_hicon_from_resource(data: &[u8]) -> Option<HICON> {
         .or_else(|| unsafe { LoadIconW(None, IDI_APPLICATION) }.ok())
 }
 
-pub fn list_windows(is_switch_apps: bool) -> Result<IndexMap<String, Vec<HWND>>> {
+pub fn list_windows(_is_switch_apps: bool) -> Result<IndexMap<String, Vec<HWND>>> {
     let mut data = EnumWindowsData {
-        is_switch_apps,
+        _is_switch_apps,
         windows: Default::default(),
     };
     unsafe { EnumWindows(Some(enum_window), LPARAM(&mut data as *mut _ as isize)).ok() }
         .map_err(|e| anyhow!("Fail to get windows {}", e))?;
-    debug!("list windows {:?} {is_switch_apps}", data.windows);
+    debug!("list windows {:?} {_is_switch_apps}", data.windows);
     Ok(data.windows)
 }
 
@@ -372,25 +406,20 @@ impl Drop for SingleInstance {
 
 #[derive(Debug)]
 struct EnumWindowsData {
-    is_switch_apps: bool,
+    _is_switch_apps: bool,
     windows: IndexMap<String, Vec<HWND>>,
 }
 
 extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let state: &mut EnumWindowsData = unsafe { &mut *(lparam.0 as *mut _) };
-    if !is_visible_window(hwnd)
-        || is_special_window(hwnd)
-        || is_small_window(hwnd)
-        || is_cloaked_window(hwnd)
-        || is_popup_window(hwnd)
-    {
-        return BOOL(1);
-    }
-    if state.is_switch_apps && (is_iconic_window(hwnd) || is_topmost_window(hwnd)) {
+    if !is_show_window(hwnd) {
         return BOOL(1);
     }
     let pid = get_window_pid(hwnd);
-    let module_path = get_module_path(hwnd, pid);
+    let module_path = match get_module_path(hwnd, pid) {
+        Some(v) => v,
+        None => return BOOL(1),
+    };
     state.windows.entry(module_path).or_default().push(hwnd);
     BOOL(1)
 }
@@ -410,7 +439,7 @@ fn get_modern_app_path(hwnd: HWND) -> Option<String> {
     for child_hwnd in child_windows {
         let child_pid = get_window_pid(child_hwnd);
         if child_pid != pid {
-            return Some(get_module_path(child_hwnd, child_pid));
+            return get_module_path(child_hwnd, child_pid);
         }
     }
     None

@@ -4,12 +4,14 @@ use crate::keyboard::KeyboardListener;
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
-    check_error, get_foreground_window, get_module_icon, get_module_path, get_window_pid,
-    get_window_ptr, list_windows, set_foregound_window, set_window_ptr, CheckError,
+    check_error, create_hicon_from_resource, get_foreground_window, get_module_icon,
+    get_module_path, get_uwp_icon_data, get_window_pid, get_window_ptr, list_windows,
+    set_foregound_window, set_window_ptr, CheckError,
 };
 
 use anyhow::{anyhow, Result};
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use windows::core::PCWSTR;
 use windows::w;
 use windows::Win32::Foundation::{
@@ -59,9 +61,9 @@ pub struct App {
     trayicon: Option<TrayIcon>,
     startup: Startup,
     config: Config,
-    // enable_hotkey: bool,
     switch_windows_state: SwitchWindowsState,
     switch_apps_state: Option<SwtichAppsState>,
+    uwp_icons: HashMap<String, Vec<u8>>,
 }
 
 impl App {
@@ -88,6 +90,7 @@ impl App {
                 modifier_released: true,
             },
             switch_apps_state: None,
+            uwp_icons: Default::default(),
         };
 
         app.set_trayicon()?;
@@ -205,7 +208,7 @@ impl App {
                 if modifier == app.config.switch_apps_hotkey.get_modifier() {
                     if let Some(state) = app.switch_apps_state.take() {
                         if let Some((_, id)) = state.apps.get(state.index) {
-                            set_foregound_window(HWND(*id))?;
+                            set_foregound_window(*id)?;
                         }
                         for (hicon, _) in state.apps {
                             unsafe { DestroyIcon(hicon) };
@@ -265,7 +268,7 @@ impl App {
         let windows = list_windows(false)?;
         let foreground_window = get_foreground_window();
         let foreground_pid = get_window_pid(foreground_window);
-        let module_path = get_module_path(foreground_pid);
+        let module_path = get_module_path(foreground_window, foreground_pid);
         if module_path.is_empty() {
             return Ok(false);
         }
@@ -304,7 +307,7 @@ impl App {
                     cache: Some((module_path, state_id, index)),
                     modifier_released: false,
                 };
-                let hwnd = HWND(windows[index]);
+                let hwnd = windows[index];
                 debug!(
                     "switch windows done {:?} {:?}",
                     hwnd, self.switch_windows_state
@@ -329,10 +332,22 @@ impl App {
         let hwnd = self.hwnd;
         let windows = list_windows(true)?;
         let mut apps = vec![];
-        for module_path in windows.keys() {
-            if let Some(hicon) = get_module_icon(module_path) {
-                apps.push((hicon, windows[module_path][0]))
-            }
+        for (module_path, hwnds) in windows.iter() {
+            let hwnd = hwnds[0];
+            if module_path.starts_with("C:\\Program Files\\WindowsApps") {
+                let mut hicon = None;
+                if let Some(data) = self.uwp_icons.get(module_path) {
+                    hicon = create_hicon_from_resource(data)
+                } else if let Some(data) = get_uwp_icon_data(module_path) {
+                    hicon = create_hicon_from_resource(&data);
+                    self.uwp_icons.insert(module_path.clone(), data);
+                }
+                if let Some(hicon) = hicon {
+                    apps.push((hicon, hwnd));
+                }
+            } else if let Some(hicon) = get_module_icon(hwnds[0]) {
+                apps.push((hicon, hwnd));
+            };
         }
         let num_apps = apps.len() as i32;
         if num_apps == 0 {
@@ -450,13 +465,13 @@ fn get_app(hwnd: HWND) -> Result<&'static mut App> {
 
 #[derive(Debug)]
 struct SwitchWindowsState {
-    cache: Option<(String, isize, usize)>,
+    cache: Option<(String, HWND, usize)>,
     modifier_released: bool,
 }
 
 #[derive(Debug)]
 struct SwtichAppsState {
-    apps: Vec<(HICON, isize)>,
+    apps: Vec<(HICON, HWND)>,
     index: usize,
     icon_size: i32,
 }

@@ -12,6 +12,7 @@ log = "0.4.17"
 once_cell = "1.17.1"
 rust-ini = "0.18.0"
 simple-logging = "2.0.2"
+xml = "0.8.10"
 
 [dependencies.windows]
 version = "0.44.0"

@@ -91,7 +91,7 @@ fn pretty_bool(value: bool) -> String {
 extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let windows: &mut WindowsMap = unsafe { &mut *(lparam.0 as *mut _) };
     let pid = get_window_pid(hwnd);
-    let module_path = get_module_path(pid);
+    let module_path = get_module_path(hwnd, pid);
     if module_path.is_empty() {
         return BOOL(1);
     }

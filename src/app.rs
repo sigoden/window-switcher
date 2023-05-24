@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use windows::core::PCWSTR;
 use windows::w;
 use windows::Win32::Foundation::{
-    GetLastError, COLORREF, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
+    GetLastError, COLORREF, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
 };
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, CreateSolidBrush, EndPaint, FillRect, GetMonitorInfoW, MonitorFromPoint,
@@ -382,13 +382,13 @@ impl App {
 
         unsafe {
             // Change busy cursor to array cursor
-            if let Ok(hcursor) = LoadCursorW(HINSTANCE(0), IDC_ARROW) {
+            if let Ok(hcursor) = LoadCursorW(HMODULE(0), IDC_ARROW) {
                 SetCursor(hcursor);
             }
             SetFocus(hwnd);
             SetWindowPos(
                 hwnd,
-                Some(HWND_TOPMOST),
+                HWND_TOPMOST,
                 x,
                 y,
                 window_width,

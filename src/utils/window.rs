@@ -201,7 +201,6 @@ pub fn set_foregound_window(hwnd: HWND) -> Result<()> {
         if is_iconic_window(hwnd) {
             ShowWindow(hwnd, SW_RESTORE);
         }
-        if is_cloaked_window(hwnd) {}
         if hwnd == get_foreground_window() {
             return Ok(());
         }

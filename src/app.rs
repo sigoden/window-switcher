@@ -208,10 +208,10 @@ impl App {
                 }
                 if modifier == app.config.switch_apps_hotkey.get_modifier() {
                     if let Some(state) = app.switch_apps_state.take() {
-                        if let Some((_, id)) = state.apps.get(state.index) {
-                            set_foregound_window(*id);
+                        if let Some((_, id, module_path)) = state.apps.get(state.index) {
+                            set_foregound_window(*id, module_path);
                         }
-                        for (hicon, _) in state.apps {
+                        for (hicon, _, _) in state.apps {
                             unsafe { DestroyIcon(hicon) };
                         }
                         unsafe { ShowWindow(hwnd, SW_HIDE) };
@@ -330,14 +330,14 @@ impl App {
                 }
                 let hwnd = HWND(state_windows[index]);
                 self.switch_windows_state = SwitchWindowsState {
-                    cache: Some((module_path, state_id, index, state_windows)),
+                    cache: Some((module_path.clone(), state_id, index, state_windows)),
                     modifier_released: false,
                 };
                 debug!(
                     "switch windows done {:?} {:?}",
                     hwnd, self.switch_windows_state
                 );
-                set_foregound_window(hwnd);
+                set_foregound_window(hwnd, &module_path);
 
                 Ok(true)
             }
@@ -378,7 +378,7 @@ impl App {
                 module_hicon = get_module_icon(module_hwnd);
             }
             if let Some(hicon) = module_hicon {
-                apps.push((hicon, module_hwnd));
+                apps.push((hicon, module_hwnd, module_path.clone()));
             }
         }
         let num_apps = apps.len() as i32;
@@ -446,7 +446,7 @@ impl App {
             if let Some(state) = self.switch_apps_state.as_ref() {
                 let cy = WINDOW_BORDER_SIZE + ICON_BORDER_SIZE;
                 let item_size = state.icon_size + 2 * ICON_BORDER_SIZE;
-                for (i, (hicon, _)) in state.apps.iter().enumerate() {
+                for (i, (hicon, _, _)) in state.apps.iter().enumerate() {
                     let brush = if i == state.index {
                         CreateSolidBrush(FG_COLOR)
                     } else {
@@ -503,7 +503,7 @@ struct SwitchWindowsState {
 
 #[derive(Debug)]
 struct SwtichAppsState {
-    apps: Vec<(HICON, HWND)>,
+    apps: Vec<(HICON, HWND, String)>,
     index: usize,
     icon_size: i32,
 }

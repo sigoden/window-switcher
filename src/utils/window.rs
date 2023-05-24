@@ -1,10 +1,11 @@
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use windows::core::PWSTR;
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT, TRUE, WPARAM};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, MAX_PATH, RECT, TRUE, WPARAM};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::System::Console::{AllocConsole, FreeConsole, GetConsoleWindow};
 use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
+use windows::Win32::System::ProcessStatus::EnumProcesses;
 use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
     PROCESS_VM_READ,
@@ -12,11 +13,11 @@ use windows::Win32::System::Threading::{
 use windows::Win32::UI::Controls::STATE_SYSTEM_INVISIBLE;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, EnumChildWindows, EnumWindows, GetAncestor, GetForegroundWindow,
-    GetLastActivePopup, GetTitleBarInfo, GetWindowLongPtrW, GetWindowPlacement, GetWindowTextW,
-    GetWindowThreadProcessId, IsIconic, IsWindowVisible, LoadIconW, SendMessageW,
+    GetLastActivePopup, GetTitleBarInfo, GetWindow, GetWindowLongPtrW, GetWindowPlacement,
+    GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, LoadIconW, SendMessageW,
     SetForegroundWindow, SetWindowPos, ShowWindow, GA_ROOTOWNER, GCL_HICON, GWL_EXSTYLE,
-    GWL_USERDATA, HICON, ICON_BIG, IDI_APPLICATION, LR_DEFAULTCOLOR, SWP_NOZORDER, SW_RESTORE,
-    TITLEBARINFO, WINDOWPLACEMENT, WM_GETICON, WS_EX_TOPMOST,
+    GWL_USERDATA, GW_OWNER, HICON, ICON_BIG, IDI_APPLICATION, LR_DEFAULTCOLOR, SWP_NOZORDER,
+    SW_RESTORE, TITLEBARINFO, WINDOWPLACEMENT, WM_GETICON, WS_EX_TOPMOST,
 };
 
 use std::fs::{read_dir, File};
@@ -97,13 +98,21 @@ pub fn is_show_window(hwnd: HWND) -> bool {
     if is_small_window(hwnd) {
         return false;
     }
-    if is_special_window(hwnd) {
-        return false;
-    }
     if is_topmost_window(hwnd) {
         return false;
     }
-    if is_cloaked_window(hwnd) {
+    let title = get_window_title(hwnd);
+    if title.is_empty() {
+        return false;
+    }
+    if is_special_window(hwnd)
+        && [
+            "Program Manager",
+            "Settings",
+            "Microsoft Text Input Application",
+        ]
+        .contains(&title.as_str())
+    {
         return false;
     }
     true
@@ -118,7 +127,7 @@ pub fn get_exe_folder() -> Result<PathBuf> {
 }
 
 pub fn get_exe_path() -> Vec<u16> {
-    let mut path = vec![0u16; 1024];
+    let mut path = vec![0u16; MAX_PATH as _];
     let size = unsafe { GetModuleFileNameW(None, &mut path) } as usize;
     path[..size].to_vec()
 }
@@ -130,12 +139,21 @@ pub fn get_window_pid(hwnd: HWND) -> u32 {
 }
 
 pub fn get_module_path(hwnd: HWND, pid: u32) -> Option<String> {
+    let module_path = get_module_path_impl(pid)?;
+    if module_path.ends_with("ApplicationFrameHost.exe") {
+        get_modern_app_path(hwnd)
+    } else {
+        Some(module_path)
+    }
+}
+
+fn get_module_path_impl(pid: u32) -> Option<String> {
     let handle =
         match unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, None, pid) } {
             Ok(v) => v,
             Err(_) => return None,
         };
-    let mut len: u32 = 1024;
+    let mut len: u32 = MAX_PATH;
     let mut name = vec![0u16; len as usize];
     let ret = unsafe {
         QueryFullProcessImageNameW(
@@ -153,11 +171,7 @@ pub fn get_module_path(hwnd: HWND, pid: u32) -> Option<String> {
     if module_path.is_empty() {
         return None;
     }
-    if module_path.ends_with("ApplicationFrameHost.exe") {
-        get_modern_app_path(hwnd)
-    } else {
-        Some(module_path)
-    }
+    Some(module_path)
 }
 
 pub fn get_modern_app_path(hwnd: HWND) -> Option<String> {
@@ -175,7 +189,7 @@ pub fn get_modern_app_path(hwnd: HWND) -> Option<String> {
     for child_hwnd in child_windows {
         let child_pid = get_window_pid(child_hwnd);
         if child_pid != pid {
-            return get_module_path(child_hwnd, child_pid);
+            return get_module_path_impl(child_pid);
         }
     }
     None
@@ -196,8 +210,12 @@ pub fn get_window_exe(hwnd: HWND) -> Option<String> {
     module_path.split('\\').map(|v| v.to_string()).last()
 }
 
-pub fn set_foregound_window(hwnd: HWND) {
+pub fn set_foregound_window(hwnd: HWND, module_path: &str) {
     unsafe {
+        if is_cloaked_window(hwnd) && module_path.starts_with("C:\\Program Files\\WindowsApps") {
+            show_uwp_window(module_path);
+            return;
+        }
         if is_iconic_window(hwnd) {
             ShowWindow(hwnd, SW_RESTORE);
         }
@@ -373,4 +391,57 @@ pub fn create_hicon_from_resource(data: &[u8]) -> Option<HICON> {
     unsafe { CreateIconFromResourceEx(data, TRUE, 0x30000, 100, 100, LR_DEFAULTCOLOR) }
         .ok()
         .or_else(|| unsafe { LoadIconW(None, IDI_APPLICATION) }.ok())
+}
+
+fn show_uwp_window(module_path: &str) -> Option<HWND> {
+    let pid = get_process_by_path(module_path)?;
+    let mut data = EnumUwpWindowsData {
+        pid,
+        windows: vec![],
+    };
+    unsafe { EnumWindows(Some(enum_uwp_window), LPARAM(&mut data as *mut _ as isize)) };
+    for hwnd in data.windows {
+        let owner: HWND = unsafe { GetWindow(hwnd, GW_OWNER) };
+        if owner != HWND(0) {
+            unsafe { ShowWindow(owner, SW_RESTORE) };
+        }
+    }
+    None
+}
+
+#[derive(Debug)]
+struct EnumUwpWindowsData {
+    pid: u32,
+    windows: Vec<HWND>,
+}
+
+extern "system" fn enum_uwp_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
+    let state: &mut EnumUwpWindowsData = unsafe { &mut *(lparam.0 as *mut _) };
+    let pid = get_window_pid(hwnd);
+    if pid == state.pid {
+        state.windows.push(hwnd);
+    }
+    BOOL(1)
+}
+
+fn get_process_by_path(module_path: &str) -> Option<u32> {
+    unsafe {
+        let mut pids = [0; 4096];
+        let mut pids_length = 0;
+        EnumProcesses(
+            pids.as_mut_ptr(),
+            std::mem::size_of_val(&pids) as u32,
+            &mut pids_length,
+        )
+        .ok()
+        .unwrap();
+        for &pid in &pids[..pids_length as usize / std::mem::size_of::<u32>()] {
+            if let Some(path) = get_module_path_impl(pid) {
+                if path == module_path {
+                    return Some(pid);
+                }
+            }
+        }
+    }
+    None
 }

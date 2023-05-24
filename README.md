@@ -1,6 +1,6 @@
 # Window Switcher
 
-MacOS-like window switcher for Windows OS.
+A fast window switcher and alt-tab replacment for Windows.
 
 1. Switch between windows of the same app with ``` alt+` ```
 

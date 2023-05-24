@@ -196,13 +196,13 @@ pub fn get_window_exe(hwnd: HWND) -> Option<String> {
     module_path.split('\\').map(|v| v.to_string()).last()
 }
 
-pub fn set_foregound_window(hwnd: HWND) -> Result<()> {
+pub fn set_foregound_window(hwnd: HWND) {
     unsafe {
         if is_iconic_window(hwnd) {
             ShowWindow(hwnd, SW_RESTORE);
         }
         if hwnd == get_foreground_window() {
-            return Ok(());
+            return;
         }
         if SetForegroundWindow(hwnd).ok().is_err() {
             AllocConsole();
@@ -212,7 +212,6 @@ pub fn set_foregound_window(hwnd: HWND) -> Result<()> {
             SetForegroundWindow(hwnd);
         }
     };
-    Ok(())
 }
 
 pub fn get_foreground_window() -> HWND {

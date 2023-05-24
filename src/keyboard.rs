@@ -5,16 +5,20 @@ use crate::{
 };
 
 use anyhow::{anyhow, Result};
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, SendMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
     WH_KEYBOARD_LL,
 };
+use windows::Win32::{
+    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+    UI::Input::KeyboardAndMouse::{VK_LSHIFT, VK_RSHIFT},
+};
 
 static mut KEYBOARD_STATE: Vec<HotKeyState> = vec![];
 static mut WINDOW: HWND = HWND(0);
+static mut IS_SHIFT_PRESSED: bool = false;
 
 #[derive(Debug)]
 pub struct KeyboardListener {
@@ -37,7 +41,6 @@ impl KeyboardListener {
                 .map(|hotkey| HotKeyState {
                     hotkey: (*hotkey).clone(),
                     is_modifier_pressed: false,
-                    count_code_key_pressed: 0,
                 })
                 .collect()
         }
@@ -59,7 +62,6 @@ impl Drop for KeyboardListener {
 struct HotKeyState {
     hotkey: Hotkey,
     is_modifier_pressed: bool,
-    count_code_key_pressed: u32,
 }
 
 unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
@@ -68,6 +70,9 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
     let vk_code = VIRTUAL_KEY(kbd_data.vkCode as _);
     let mut is_modifier = false;
     let is_key_pressed = || kbd_data.flags.0 & 128 == 0;
+    if [VK_LSHIFT, VK_RSHIFT].contains(&vk_code) {
+        IS_SHIFT_PRESSED = is_key_pressed();
+    }
     for state in KEYBOARD_STATE.iter_mut() {
         if state.hotkey.modifier.contains(&vk_code) {
             is_modifier = true;
@@ -84,18 +89,16 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
                     )
                 };
             }
-            state.count_code_key_pressed = 0;
         }
     }
     if !is_modifier {
         for state in KEYBOARD_STATE.iter_mut() {
             if vk_code.0 == state.hotkey.code && is_key_pressed() && state.is_modifier_pressed {
-                let count = state.count_code_key_pressed;
-                state.count_code_key_pressed += 1;
                 let id = state.hotkey.id;
                 if id != SWITCH_WINDOWS_HOTKEY_ID || !IS_FOREGROUND_IN_BLACKLIST {
+                    let reverse = if IS_SHIFT_PRESSED { 1 } else { 0 };
                     unsafe {
-                        SendMessageW(WINDOW, WM_USER_HOOTKEY, WPARAM(id as _), LPARAM(count as _))
+                        SendMessageW(WINDOW, WM_USER_HOOTKEY, WPARAM(id as _), LPARAM(reverse))
                     };
                     return LRESULT(1);
                 }

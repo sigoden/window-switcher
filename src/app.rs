@@ -10,6 +10,7 @@ use crate::utils::{
 };
 
 use anyhow::{anyhow, Result};
+use indexmap::IndexSet;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use windows::core::PCWSTR;
@@ -208,7 +209,7 @@ impl App {
                 if modifier == app.config.switch_apps_hotkey.get_modifier() {
                     if let Some(state) = app.switch_apps_state.take() {
                         if let Some((_, id)) = state.apps.get(state.index) {
-                            set_foregound_window(*id)?;
+                            set_foregound_window(*id);
                         }
                         for (hicon, _) in state.apps {
                             unsafe { DestroyIcon(hicon) };
@@ -220,11 +221,12 @@ impl App {
             WM_USER_HOOTKEY => {
                 debug!("message WM_USER_HOOTKEY {}", wparam.0);
                 let app = get_app(hwnd)?;
+                let reverse = lparam.0 == 1;
                 let hotkey_id = wparam.0 as u32;
                 if hotkey_id == app.config.switch_windows_hotkey.id {
-                    app.switch_windows()?;
+                    app.switch_windows(reverse)?;
                 } else if hotkey_id == app.config.switch_apps_hotkey.id {
-                    app.switch_apps()?;
+                    app.switch_apps(reverse)?;
                     unsafe {
                         RedrawWindow(hwnd, None, HRGN::default(), RDW_ERASE | RDW_INVALIDATE)
                     };
@@ -263,8 +265,8 @@ impl App {
         Ok(unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) })
     }
 
-    pub fn switch_windows(&mut self) -> Result<bool> {
-        debug!("switch windows enter {:?}", self.switch_apps_state);
+    pub fn switch_windows(&mut self, reverse: bool) -> Result<bool> {
+        debug!("switch windows enter {:?}", self.switch_windows_state);
         let windows = list_windows(false)?;
         let foreground_window = get_foreground_window();
         let foreground_pid = get_window_pid(foreground_window);
@@ -283,8 +285,9 @@ impl App {
                 let current_id = windows[0];
                 let mut index = 1;
                 let mut state_id = current_id;
+                let mut state_windows = vec![];
                 if windows_len > 2 {
-                    if let Some((cache_module_path, cache_id, cache_index)) =
+                    if let Some((cache_module_path, cache_id, cache_index, cache_windows)) =
                         self.switch_windows_state.cache.as_ref()
                     {
                         if cache_module_path == &module_path {
@@ -297,35 +300,63 @@ impl App {
                                     }
                                 }
                             } else {
-                                index = (cache_index + 1).min(windows_len - 1);
                                 state_id = *cache_id;
+                                let mut windows_set: IndexSet<isize> =
+                                    windows.iter().map(|v| v.0).collect();
+                                for id in cache_windows {
+                                    if windows_set.contains(id) {
+                                        state_windows.push(*id);
+                                        windows_set.remove(id);
+                                    }
+                                }
+                                state_windows.extend(windows_set);
+                                index = if reverse {
+                                    if *cache_index == 0 {
+                                        windows_len - 1
+                                    } else {
+                                        cache_index - 1
+                                    }
+                                } else if *cache_index >= windows_len - 1 {
+                                    0
+                                } else {
+                                    cache_index + 1
+                                };
                             }
                         }
                     }
                 }
+                if state_windows.is_empty() {
+                    state_windows = windows.iter().map(|v| v.0).collect();
+                }
+                let hwnd = HWND(state_windows[index]);
                 self.switch_windows_state = SwitchWindowsState {
-                    cache: Some((module_path, state_id, index)),
+                    cache: Some((module_path, state_id, index, state_windows)),
                     modifier_released: false,
                 };
-                let hwnd = windows[index];
                 debug!(
                     "switch windows done {:?} {:?}",
                     hwnd, self.switch_windows_state
                 );
-                set_foregound_window(hwnd)?;
+                set_foregound_window(hwnd);
 
                 Ok(true)
             }
         }
     }
 
-    fn switch_apps(&mut self) -> Result<()> {
+    fn switch_apps(&mut self, reverse: bool) -> Result<()> {
         debug!("switch apps enter {:?}", self.switch_apps_state);
         if let Some(state) = self.switch_apps_state.as_mut() {
-            if state.index + 1 < state.apps.len() {
-                state.index += 1;
-            } else {
+            if reverse {
+                if state.index == 0 {
+                    state.index = state.apps.len() - 1;
+                } else {
+                    state.index -= 1;
+                }
+            } else if state.index == state.apps.len() - 1 {
                 state.index = 0;
+            } else {
+                state.index += 1;
             };
             return Ok(());
         }
@@ -466,7 +497,7 @@ fn get_app(hwnd: HWND) -> Result<&'static mut App> {
 
 #[derive(Debug)]
 struct SwitchWindowsState {
-    cache: Option<(String, HWND, usize)>,
+    cache: Option<(String, HWND, usize, Vec<isize>)>,
     modifier_released: bool,
 }
 

@@ -5,8 +5,8 @@ use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
     check_error, create_hicon_from_resource, get_foreground_window, get_module_icon,
-    get_module_path, get_uwp_icon_data, get_window_pid, get_window_user_data, list_windows,
-    set_foregound_window, set_window_user_data, CheckError,
+    get_uwp_icon_data, get_window_user_data, list_windows, set_foregound_window,
+    set_window_user_data, CheckError,
 };
 
 use anyhow::{anyhow, Result};
@@ -208,10 +208,10 @@ impl App {
                 }
                 if modifier == app.config.switch_apps_hotkey.get_modifier() {
                     if let Some(state) = app.switch_apps_state.take() {
-                        if let Some((_, id, module_path)) = state.apps.get(state.index) {
-                            set_foregound_window(*id, module_path);
+                        if let Some((_, id)) = state.apps.get(state.index) {
+                            set_foregound_window(*id);
                         }
-                        for (hicon, _, _) in state.apps {
+                        for (hicon, _) in state.apps {
                             unsafe { DestroyIcon(hicon) };
                         }
                         unsafe { ShowWindow(hwnd, SW_HIDE) };
@@ -266,23 +266,28 @@ impl App {
     }
 
     pub fn switch_windows(&mut self, reverse: bool) -> Result<bool> {
-        debug!("switch windows enter {:?}", self.switch_windows_state);
-        let windows = list_windows(false)?;
-        let foreground_window = get_foreground_window();
-        let foreground_pid = get_window_pid(foreground_window);
-        let module_path = match get_module_path(foreground_window, foreground_pid) {
+        let windows = list_windows()?;
+        let fore_hwnd = get_foreground_window();
+        debug!(
+            "switch windows reverse:{reverse} foreground:{fore_hwnd:?} {:?}",
+            self.switch_windows_state
+        );
+        let module_path = match windows
+            .iter()
+            .find(|(_, v)| v.iter().any(|(id, _)| *id == fore_hwnd))
+            .map(|(k, _)| k.clone())
+        {
             Some(v) => v,
             None => return Ok(false),
         };
         match windows.get(&module_path) {
             None => Ok(false),
             Some(windows) => {
-                debug!("switch windows {module_path} {windows:?}");
                 let windows_len = windows.len();
                 if windows_len == 1 {
                     return Ok(false);
                 }
-                let current_id = windows[0];
+                let current_id = windows[0].0;
                 let mut index = 1;
                 let mut state_id = current_id;
                 let mut state_windows = vec![];
@@ -294,7 +299,7 @@ impl App {
                             if self.switch_windows_state.modifier_released {
                                 if *cache_id != current_id {
                                     if let Some((i, _)) =
-                                        windows.iter().enumerate().find(|(_, v)| *v == cache_id)
+                                        windows.iter().enumerate().find(|(_, (v, _))| v == cache_id)
                                     {
                                         index = i;
                                     }
@@ -302,7 +307,7 @@ impl App {
                             } else {
                                 state_id = *cache_id;
                                 let mut windows_set: IndexSet<isize> =
-                                    windows.iter().map(|v| v.0).collect();
+                                    windows.iter().map(|(v, _)| v.0).collect();
                                 for id in cache_windows {
                                     if windows_set.contains(id) {
                                         state_windows.push(*id);
@@ -326,18 +331,14 @@ impl App {
                     }
                 }
                 if state_windows.is_empty() {
-                    state_windows = windows.iter().map(|v| v.0).collect();
+                    state_windows = windows.iter().map(|(v, _)| v.0).collect();
                 }
                 let hwnd = HWND(state_windows[index]);
                 self.switch_windows_state = SwitchWindowsState {
                     cache: Some((module_path.clone(), state_id, index, state_windows)),
                     modifier_released: false,
                 };
-                debug!(
-                    "switch windows done {:?} {:?}",
-                    hwnd, self.switch_windows_state
-                );
-                set_foregound_window(hwnd, &module_path);
+                set_foregound_window(hwnd);
 
                 Ok(true)
             }
@@ -345,7 +346,7 @@ impl App {
     }
 
     fn switch_apps(&mut self, reverse: bool) -> Result<()> {
-        debug!("switch apps enter {:?}", self.switch_apps_state);
+        debug!("switch apps reverse:{reverse} {:?}", self.switch_apps_state);
         if let Some(state) = self.switch_apps_state.as_mut() {
             if reverse {
                 if state.index == 0 {
@@ -361,10 +362,10 @@ impl App {
             return Ok(());
         }
         let hwnd = self.hwnd;
-        let windows = list_windows(true)?;
+        let windows = list_windows()?;
         let mut apps = vec![];
         for (module_path, hwnds) in windows.iter() {
-            let module_hwnd = hwnds[0];
+            let module_hwnd = hwnds[0].0;
             let mut module_hicon = None;
             if module_path.starts_with("C:\\Program Files\\WindowsApps") {
                 if let Some(data) = self.uwp_icons.get(module_path) {
@@ -378,7 +379,7 @@ impl App {
                 module_hicon = get_module_icon(module_hwnd);
             }
             if let Some(hicon) = module_hicon {
-                apps.push((hicon, module_hwnd, module_path.clone()));
+                apps.push((hicon, module_hwnd));
             }
         }
         let num_apps = apps.len() as i32;
@@ -435,7 +436,6 @@ impl App {
             index,
             icon_size,
         });
-        debug!("switch apps done {:?}", self.switch_apps_state);
         Ok(())
     }
 
@@ -446,7 +446,7 @@ impl App {
             if let Some(state) = self.switch_apps_state.as_ref() {
                 let cy = WINDOW_BORDER_SIZE + ICON_BORDER_SIZE;
                 let item_size = state.icon_size + 2 * ICON_BORDER_SIZE;
-                for (i, (hicon, _, _)) in state.apps.iter().enumerate() {
+                for (i, (hicon, _)) in state.apps.iter().enumerate() {
                     let brush = if i == state.index {
                         CreateSolidBrush(FG_COLOR)
                     } else {
@@ -503,7 +503,7 @@ struct SwitchWindowsState {
 
 #[derive(Debug)]
 struct SwtichAppsState {
-    apps: Vec<(HICON, HWND, String)>,
+    apps: Vec<(HICON, HWND)>,
     index: usize,
     icon_size: i32,
 }

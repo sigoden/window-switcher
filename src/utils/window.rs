@@ -17,9 +17,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WS_EX_TOPMOST,
 };
 
-use std::fs::{read_dir, File};
+use std::fs::File;
 use std::io::{BufReader, Read};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::{ffi::c_void, mem::size_of};
 use xml::reader::XmlEvent;
 use xml::EventReader;
@@ -220,58 +220,58 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
 }
 
 pub fn get_uwp_icon_data(module_path: &str) -> Option<Vec<u8>> {
-    let module_path = PathBuf::from(module_path);
-    let module_dir = module_path.parent()?;
-    let manifest_path = module_dir.join("AppxManifest.xml");
-    let metadata_logo_path = get_appx_logo_path(&manifest_path)?;
-    let metadata_logo_path = module_dir.join(metadata_logo_path);
-    let logo_dir = metadata_logo_path.parent()?;
-    let mut logo_path = None;
-    let log_basename = metadata_logo_path
-        .file_stem()?
-        .to_string_lossy()
-        .to_string();
-    for entry in read_dir(logo_dir).ok()? {
-        let entry = entry.ok()?;
-        let entry_file_name = entry.file_name().to_string_lossy().to_string();
-        if entry_file_name.starts_with(&log_basename) {
-            logo_path = Some(logo_dir.join(entry_file_name).to_string_lossy().to_string());
-            break;
-        }
-    }
-    let logo_path = logo_path?;
+    let logo_path = get_appx_logo_path(module_path)?;
     let mut logo_file = File::open(logo_path).ok()?;
     let mut buffer = vec![];
     logo_file.read_to_end(&mut buffer).ok()?;
     Some(buffer)
 }
 
-fn get_appx_logo_path(manifest_path: &Path) -> Option<String> {
+fn get_appx_logo_path(module_path: &str) -> Option<PathBuf> {
+    let module_path = PathBuf::from(module_path);
+    let executable = module_path.file_name()?.to_string_lossy();
+    let module_dir = module_path.parent()?;
+    let manifest_path = module_dir.join("AppxManifest.xml");
     let manifest_file = File::open(manifest_path).ok()?;
     let manifest_file = BufReader::new(manifest_file); // Buffering is important for performance
     let reader = EventReader::new(manifest_file);
-    let mut logo_path = None;
-    let mut xpaths = vec![];
+    let mut logo_value = None;
+    let mut matched = false;
+    let mut paths = vec![];
     let mut depth = 0;
     for e in reader {
         match e {
-            Ok(XmlEvent::StartElement { name, .. }) => {
-                if xpaths.len() == depth {
-                    xpaths.push(name.local_name.clone())
+            Ok(XmlEvent::StartElement {
+                name, attributes, ..
+            }) => {
+                if paths.len() == depth {
+                    paths.push(name.local_name.clone())
+                }
+                let xpath = paths.join("/");
+                if xpath == "Package/Applications/Application" {
+                    matched = attributes
+                        .iter()
+                        .any(|v| v.name.local_name == "Executable" && v.value == executable);
+                } else if xpath == "Package/Applications/Application/VisualElements" && matched {
+                    if let Some(value) = attributes
+                        .iter()
+                        .find(|v| {
+                            ["Square44x44Logo", "Square30x30Logo", "SmallLogo"]
+                                .contains(&v.name.local_name.as_str())
+                        })
+                        .map(|v| v.value.clone())
+                    {
+                        logo_value = Some(value);
+                        break;
+                    }
                 }
                 depth += 1;
             }
             Ok(XmlEvent::EndElement { .. }) => {
-                if xpaths.len() == depth {
-                    xpaths.pop();
+                if paths.len() == depth {
+                    paths.pop();
                 }
                 depth -= 1;
-            }
-            Ok(XmlEvent::Characters(text)) => {
-                if xpaths.join("/") == "Package/Properties/Logo" {
-                    logo_path = Some(text);
-                    break;
-                }
             }
             Err(_) => {
                 break;
@@ -279,7 +279,24 @@ fn get_appx_logo_path(manifest_path: &Path) -> Option<String> {
             _ => {}
         }
     }
-    logo_path
+    let logo_path = module_dir.join(logo_value?);
+    let extension = format!(".{}", logo_path.extension()?.to_string_lossy());
+    let logo_path = logo_path.display().to_string();
+    let prefix = &logo_path[0..(logo_path.len() - extension.len())];
+    for size in [
+        "targetsize-256",
+        "targetsize-128",
+        "targetsize-72",
+        "targetsize-36",
+        "scale-200",
+        "scale-100",
+    ] {
+        let logo_path = PathBuf::from(format!("{prefix}.{size}{extension}"));
+        if logo_path.exists() {
+            return Some(logo_path);
+        }
+    }
+    None
 }
 
 pub fn create_hicon_from_resource(data: &[u8]) -> Option<HICON> {

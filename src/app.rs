@@ -207,15 +207,7 @@ impl App {
                     app.switch_windows_state.modifier_released = true;
                 }
                 if modifier == app.config.switch_apps_hotkey.get_modifier() {
-                    if let Some(state) = app.switch_apps_state.take() {
-                        if let Some((_, id)) = state.apps.get(state.index) {
-                            set_foregound_window(*id);
-                        }
-                        for (hicon, _) in state.apps {
-                            unsafe { DestroyIcon(hicon) };
-                        }
-                        unsafe { ShowWindow(hwnd, SW_HIDE) };
-                    }
+                    app.do_switch_app();
                 }
             }
             WM_USER_HOOTKEY => {
@@ -231,6 +223,12 @@ impl App {
                         RedrawWindow(hwnd, None, HRGN::default(), RDW_ERASE | RDW_INVALIDATE)
                     };
                 }
+            }
+            WM_LBUTTONUP => {
+                let app = get_app(hwnd)?;
+                let xpos = ((lparam.0 as usize) & 0xFFFF) as u16 as i32;
+                let ypos = (((lparam.0 as usize) & 0xFFFF_0000) >> 16) as u16 as i32;
+                app.click(xpos, ypos)?;
             }
             WM_COMMAND => {
                 let value = wparam.0 as u32;
@@ -483,6 +481,40 @@ impl App {
         }
 
         Ok(())
+    }
+
+    fn click(&mut self, xpos: i32, ypos: i32) -> Result<()> {
+        if let Some(state) = self.switch_apps_state.as_mut() {
+            let cy = WINDOW_BORDER_SIZE + ICON_BORDER_SIZE;
+            let item_size = state.icon_size + 2 * ICON_BORDER_SIZE;
+            for (i, (_, _)) in state.apps.iter().enumerate() {
+                let cx = WINDOW_BORDER_SIZE + item_size * (i as i32) + ICON_BORDER_SIZE;
+                if xpos >= cx
+                    && xpos <= cx + state.icon_size
+                    && ypos >= cy
+                    && ypos <= cy + state.icon_size
+                {
+                    state.index = i;
+                    self.do_switch_app();
+                    break;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn do_switch_app(&mut self) {
+        let hwnd = self.hwnd;
+        if let Some(state) = self.switch_apps_state.take() {
+            if let Some((_, id)) = state.apps.get(state.index) {
+                set_foregound_window(*id);
+            }
+            for (hicon, _) in state.apps {
+                unsafe { DestroyIcon(hicon) };
+            }
+            unsafe { ShowWindow(hwnd, SW_HIDE) };
+        }
     }
 }
 

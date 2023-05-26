@@ -1,14 +1,10 @@
 # Window Switcher
 
-A fast window switcher and alt-tab replacment for Windows.
+A fast window switcher and Alt-Tab replacement for Windows.
 
-1. Switch between windows of the same app with ``` alt+` ```
+1. Use ``` alt+` ``` to switch between windows of the same app.
 
-![switch-windows](https://user-images.githubusercontent.com/4012553/222900407-e62c4407-414c-40b9-86b1-112d0e227cde.gif)
-
-2. Switch open apps with `alt+tab`
-
-![switch-apps](https://user-images.githubusercontent.com/4012553/221538853-b4793205-23a6-4a27-9f3c-4ff519cd6650.gif)
+2. Use ``` alt+tab ``` to switch between open apps.
 
 ⚠️ **This feature is turned off by default. You need to add the following configuration to enable.** ⚠️
 
@@ -19,7 +15,7 @@ enable = yes
 
 ## Install
 
-Download from [Github Release](https://github.com/sigoden/windows-switcher/releases), unzip `window-switcher.exe`, click to run directly without installation.
+You can download the [Github Release](https://github.com/sigoden/windows-switcher/releases) from the Github Release page. After downloading, unzip the `window-switcher.exe` file. Then, you can simply click on the executable file to run the application directly without the need for installation.
 
 ## Configuration
 

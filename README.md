@@ -1,10 +1,10 @@
 # Window Switcher
 
-A fast window switcher and Alt-Tab replacement for Windows.
+Easily switching windows or applications in Windows OS.
 
-1. Use ``` alt+` ``` to switch between windows of the same app.
+1. Use ``` alt+` ``` to switch between different windows of the same application.
 
-2. Use ``` alt+tab ``` to switch between open apps.
+2. Use ``` alt+tab ``` to switch between open application.
 
 ⚠️ **This feature is turned off by default. You need to add the following configuration to enable.** ⚠️
 

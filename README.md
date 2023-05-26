@@ -1,17 +1,13 @@
 # Window Switcher
 
-A Mac-like window switcher and Alt+Tab replacement.
+Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 
-1. Use ``` alt+` ``` to switch between different windows of the same application.
+1. ``` alt+` ```: switch between different windows of the same application.
 
-2. Use ``` alt+tab ``` to switch between open application.
+2. ``` alt+tab ```: switch between open application.
 
-⚠️ **This feature is turned off by default. You need to add the following configuration to enable.** ⚠️
 
-```ini
-[switch-apps]
-enable = yes
-```
+![window-switcher](https://github.com/sigoden/window-switcher/assets/4012553/b3b1b5f0-5433-490b-81b3-c743b81d3236)
 
 ## Install
 
@@ -19,7 +15,12 @@ Download from the [Github Release](https://github.com/sigoden/windows-switcher/r
 
 ## Configuration
 
-You can configure window-switcher by creating a `window-switcher.ini` file in the same directory as `window-switcher.exe`.
+You can configure following items by creating a `window-switcher.ini` file in the same directory as `window-switcher.exe`:
+
+- Hide the tray icon.
+- Set custom hotkeys.
+- Disable hotkeys for specific apps.
+- Turn on/off the switch apps functionality.
 
 The default configuration is as follows:
 
@@ -46,6 +47,16 @@ hotkey = alt+tab
 ```
 
 ⚠️ **After changing the configuration, you need to restart.** ⚠️
+
+
+⚠️ **By default, the functionality to switch between apps (alt+tab) is disabled. To enable it, you must add the following configuration:** ⚠️
+
+```ini
+[switch-apps]
+enable = yes
+```
+
+</details>
 
 ## License
 

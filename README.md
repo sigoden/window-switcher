@@ -15,7 +15,7 @@ enable = yes
 
 ## Install
 
-You can download the [Github Release](https://github.com/sigoden/windows-switcher/releases) from the Github Release page. After downloading, unzip the `window-switcher.exe` file. Then, you can simply click on the executable file to run the application directly without the need for installation.
+Download from the [Github Release](https://github.com/sigoden/windows-switcher/releases), unzip the `window-switcher.exe` file.  Then, you can simply click on the executable file to run the application directly without the need for installation.
 
 ## Configuration
 

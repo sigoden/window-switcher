@@ -216,7 +216,12 @@ impl App {
                 let reverse = lparam.0 == 1;
                 let hotkey_id = wparam.0 as u32;
                 if hotkey_id == app.config.switch_windows_hotkey.id {
-                    app.switch_windows(reverse)?;
+                    let hwnd = app
+                        .switch_apps_state
+                        .as_ref()
+                        .and_then(|state| state.apps.get(state.index).map(|(_, id)| *id))
+                        .unwrap_or_else(get_foreground_window);
+                    app.switch_windows(hwnd, reverse)?;
                 } else if hotkey_id == app.config.switch_apps_hotkey.id {
                     app.switch_apps(reverse)?;
                     unsafe {
@@ -263,16 +268,15 @@ impl App {
         Ok(unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) })
     }
 
-    pub fn switch_windows(&mut self, reverse: bool) -> Result<bool> {
+    pub fn switch_windows(&mut self, hwnd: HWND, reverse: bool) -> Result<bool> {
         let windows = list_windows()?;
-        let fore_hwnd = get_foreground_window();
         debug!(
-            "switch windows reverse:{reverse} foreground:{fore_hwnd:?} {:?}",
+            "switch windows hwnd:{hwnd:?} reverse:{reverse} {:?}",
             self.switch_windows_state
         );
         let module_path = match windows
             .iter()
-            .find(|(_, v)| v.iter().any(|(id, _)| *id == fore_hwnd))
+            .find(|(_, v)| v.iter().any(|(id, _)| *id == hwnd))
             .map(|(k, _)| k.clone())
         {
             Some(v) => v,

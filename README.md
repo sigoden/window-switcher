@@ -21,6 +21,7 @@ You can configure following items by creating a `window-switcher.ini` file in th
 - Set custom hotkeys.
 - Disable hotkeys for specific apps.
 - Turn on/off the switch apps functionality.
+- Controls whether to skip the minimum windows.
 
 The default configuration is as follows:
 
@@ -37,6 +38,9 @@ hotkey = alt+`
 # e.g. game1.exe,game.exe
 blacklist =
 
+# Ignore minimal windows
+ignore_minimal = no
+
 [switch-apps]
 
 # Whether to enable switching apps
@@ -44,6 +48,9 @@ enable = no
 
 # Hotkey to switch apps
 hotkey = alt+tab
+
+# Ignore minimal windows
+ignore_minimal = no
 ```
 
 ⚠️ **After changing the configuration, you need to restart.** ⚠️

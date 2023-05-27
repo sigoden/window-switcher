@@ -184,7 +184,7 @@ pub fn get_class_icon(hwnd: HWND) -> usize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongPtrW(hwnd, GCL_HICON) }
 }
 
-pub fn list_windows() -> Result<IndexMap<String, Vec<(HWND, String)>>> {
+pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
     let mut result: IndexMap<String, Vec<(HWND, String)>> = IndexMap::new();
     let mut hwnds: Vec<HWND> = Default::default();
     unsafe { EnumWindows(Some(enum_window), LPARAM(&mut hwnds as *mut _ as isize)).ok() }
@@ -192,7 +192,12 @@ pub fn list_windows() -> Result<IndexMap<String, Vec<(HWND, String)>>> {
     let mut visiable_hwnds = vec![];
     let mut owner_hwnds = vec![];
     for hwnd in hwnds.iter().cloned() {
-        if is_visible_window(hwnd) && !is_cloaked_window(hwnd) && !is_topmost_window(hwnd) {
+        let mut yes =
+            is_visible_window(hwnd) && !is_cloaked_window(hwnd) && !is_topmost_window(hwnd);
+        if ignore_minimal && is_iconic_window(hwnd) {
+            yes = false;
+        }
+        if yes {
             let title = get_window_title(hwnd);
             if !title.is_empty() && title != "Program Manager" {
                 visiable_hwnds.push((hwnd, title))

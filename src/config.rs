@@ -19,8 +19,10 @@ pub struct Config {
     pub log_file: Option<PathBuf>,
     pub switch_windows_hotkey: Hotkey,
     pub switch_windows_blacklist: HashSet<String>,
+    pub switch_windows_ignore_minimal: bool,
     pub switch_apps_enable: bool,
     pub switch_apps_hotkey: Hotkey,
+    pub switch_apps_ignore_minimal: bool,
 }
 
 impl Default for Config {
@@ -36,9 +38,11 @@ impl Default for Config {
             )
             .unwrap(),
             switch_windows_blacklist: Default::default(),
+            switch_windows_ignore_minimal: false,
             switch_apps_enable: false,
             switch_apps_hotkey: Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", "alt + tab")
                 .unwrap(),
+            switch_apps_ignore_minimal: false,
         }
     }
 }
@@ -82,6 +86,9 @@ impl Config {
             {
                 conf.switch_windows_blacklist = v;
             }
+            if let Some(v) = section.get("ignore_minimal").and_then(Config::to_bool) {
+                conf.switch_windows_ignore_minimal = v;
+            }
         }
         if let Some(section) = ini_conf.section(Some("switch-apps")) {
             if let Some(v) = section.get("enable").and_then(Config::to_bool) {
@@ -92,6 +99,9 @@ impl Config {
                     conf.switch_apps_hotkey =
                         Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", v)?;
                 }
+            }
+            if let Some(v) = section.get("ignore_minimal").and_then(Config::to_bool) {
+                conf.switch_apps_ignore_minimal = v;
             }
         }
         Ok(conf)

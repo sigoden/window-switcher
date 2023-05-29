@@ -2,12 +2,12 @@
 
 Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 
-1. ``` alt+tab ```: switch between open application. (disabled by default)
+1. ``` alt+` ```: switch between different windows of the same application.
 
-2. ``` alt+` ```: switch between different windows of the same application.
+2. ``` alt+tab ```: switch between open application. (disabled by default)
 
 
-![window-switcher](https://github.com/sigoden/window-switcher/assets/4012553/e23d1b97-37af-4964-a97c-0a4b4bc96738)
+![window-switcher](https://github.com/sigoden/window-switcher/assets/4012553/0ca54685-32a2-4cf2-8410-d3f8bbacd3ce)
 
 ## Install
 

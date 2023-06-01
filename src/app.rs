@@ -5,7 +5,7 @@ use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
     check_error, create_hicon_from_resource, get_foreground_window, get_module_icon,
-    get_uwp_icon_data, get_window_user_data, list_windows, set_foregound_window,
+    get_uwp_icon_data, get_window_user_data, is_iconic_window, list_windows, set_foregound_window,
     set_window_user_data, CheckError,
 };
 
@@ -367,7 +367,11 @@ impl App {
         let windows = list_windows(self.config.switch_apps_ignore_minimal)?;
         let mut apps = vec![];
         for (module_path, hwnds) in windows.iter() {
-            let module_hwnd = hwnds[0].0;
+            let module_hwnd = if is_iconic_window(hwnds[0].0) {
+                hwnds[hwnds.len() - 1].0
+            } else {
+                hwnds[0].0
+            };
             let mut module_hicon = None;
             if module_path.starts_with("C:\\Program Files\\WindowsApps") {
                 if let Some(data) = self.uwp_icons.get(module_path) {

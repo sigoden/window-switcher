@@ -435,7 +435,13 @@ impl App {
             );
         }
 
-        let index = if apps.len() == 1 { 0 } else { 1 };
+        let index = if apps.len() == 1 {
+            0
+        } else if reverse {
+            apps.len() - 1
+        } else {
+            1
+        };
 
         self.switch_apps_state = Some(SwtichAppsState {
             apps,

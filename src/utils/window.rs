@@ -11,10 +11,10 @@ use windows::Win32::System::Threading::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, EnumWindows, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
-    GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, LoadIconW, SendMessageW,
-    SetForegroundWindow, SetWindowPos, ShowWindow, GCL_HICON, GWL_EXSTYLE, GWL_USERDATA, GW_OWNER,
-    HICON, ICON_BIG, IDI_APPLICATION, LR_DEFAULTCOLOR, SWP_NOZORDER, SW_RESTORE, WM_GETICON,
-    WS_EX_TOPMOST,
+    GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+    LoadIconW, SendMessageW, SetForegroundWindow, SetWindowPos, ShowWindow, GCL_HICON, GWL_EXSTYLE,
+    GWL_USERDATA, GW_OWNER, HICON, ICON_BIG, IDI_APPLICATION, LR_DEFAULTCOLOR, SWP_NOZORDER,
+    SW_RESTORE, WINDOWPLACEMENT, WM_GETICON, WS_EX_TOPMOST,
 };
 
 use std::fs::File;
@@ -49,6 +49,18 @@ pub fn is_cloaked_window(hwnd: HWND) -> bool {
         )
     };
     cloaked != 0
+}
+
+pub fn is_small_window(hwnd: HWND) -> bool {
+    let (width, height) = get_window_size(hwnd);
+    width + height < 250
+}
+
+pub fn get_window_size(hwnd: HWND) -> (i32, i32) {
+    let mut placement = WINDOWPLACEMENT::default();
+    unsafe { GetWindowPlacement(hwnd, &mut placement) };
+    let rect = placement.rcNormalPosition;
+    ((rect.right - rect.left), (rect.bottom - rect.top))
 }
 
 pub fn get_exe_folder() -> Result<PathBuf> {
@@ -152,8 +164,7 @@ pub fn get_module_icon(hwnd: HWND) -> Option<HICON> {
     if ret != 0 {
         return Some(HICON(ret as _));
     }
-
-    unsafe { LoadIconW(None, IDI_APPLICATION) }.ok()
+    None
 }
 
 #[cfg(target_arch = "x86")]
@@ -189,23 +200,25 @@ pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, 
     let mut hwnds: Vec<HWND> = Default::default();
     unsafe { EnumWindows(Some(enum_window), LPARAM(&mut hwnds as *mut _ as isize)).ok() }
         .map_err(|e| anyhow!("Fail to get windows {}", e))?;
-    let mut visiable_hwnds = vec![];
+    let mut valid_hwnds = vec![];
     let mut owner_hwnds = vec![];
     for hwnd in hwnds.iter().cloned() {
-        let mut yes =
-            is_visible_window(hwnd) && !is_cloaked_window(hwnd) && !is_topmost_window(hwnd);
-        if ignore_minimal && is_iconic_window(hwnd) {
-            yes = false;
+        let mut valid = is_visible_window(hwnd)
+            && !is_cloaked_window(hwnd)
+            && !is_topmost_window(hwnd)
+            && !is_small_window(hwnd);
+        if valid && ignore_minimal && is_iconic_window(hwnd) {
+            valid = false;
         }
-        if yes {
+        if valid {
             let title = get_window_title(hwnd);
             if !title.is_empty() && title != "Program Manager" {
-                visiable_hwnds.push((hwnd, title))
+                valid_hwnds.push((hwnd, title))
             }
         }
         owner_hwnds.push(get_owner_window(hwnd))
     }
-    for (hwnd, title) in visiable_hwnds.into_iter() {
+    for (hwnd, title) in valid_hwnds.into_iter() {
         if let Some((i, _)) = owner_hwnds.iter().enumerate().find(|(_, v)| **v == hwnd) {
             if let Some(module_path) = get_module_path(get_window_pid(hwnds[i])) {
                 result.entry(module_path).or_default().push((hwnd, title));

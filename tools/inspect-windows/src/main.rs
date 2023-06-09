@@ -14,18 +14,21 @@ fn main() -> Result<()> {
         let is_iconic = is_iconic_window(hwnd);
         let is_topmost = is_topmost_window(hwnd);
         let is_visible = is_visible_window(hwnd);
+        let (width, height) = get_window_size(hwnd);
         let owner_hwnd: HWND = unsafe { GetWindow(hwnd, GW_OWNER) };
         let owner_title = if owner_hwnd.0 > 0 {
             get_window_title(owner_hwnd)
         } else {
             "".into()
         };
+        let size = format!("{width}x{height}");
         println!(
-            "visible:{}cloacked{}iconic{}topmost:{} {}:{} {}:{}",
+            "visible:{}cloacked{}iconic{}topmost:{} {:>10} {:>10}:{} {}:{}",
             pretty_bool(is_visible),
             pretty_bool(is_cloaked),
             pretty_bool(is_iconic),
             pretty_bool(is_topmost),
+            size,
             hwnd.0,
             title,
             owner_hwnd.0,

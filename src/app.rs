@@ -271,7 +271,7 @@ impl App {
     pub fn switch_windows(&mut self, hwnd: HWND, reverse: bool) -> Result<bool> {
         let windows = list_windows(self.config.switch_windows_ignore_minimal)?;
         debug!(
-            "switch windows hwnd:{hwnd:?} reverse:{reverse} {:?}",
+            "switch windows: hwnd:{hwnd:?} reverse:{reverse} state:{:?}",
             self.switch_windows_state
         );
         let module_path = match windows
@@ -348,7 +348,10 @@ impl App {
     }
 
     fn switch_apps(&mut self, reverse: bool) -> Result<()> {
-        debug!("switch apps reverse:{reverse} {:?}", self.switch_apps_state);
+        debug!(
+            "switch apps: reverse:{reverse}, state:{:?}",
+            self.switch_apps_state
+        );
         if let Some(state) = self.switch_apps_state.as_mut() {
             if reverse {
                 if state.index == 0 {
@@ -361,6 +364,7 @@ impl App {
             } else {
                 state.index += 1;
             };
+            debug!("switch apps: new index:{}", state.index);
             return Ok(());
         }
         let hwnd = self.hwnd;
@@ -381,10 +385,7 @@ impl App {
                     self.uwp_icons.insert(module_path.clone(), data);
                 }
             }
-            if module_hicon.is_none() {
-                module_hicon = get_module_icon(module_hwnd);
-            }
-            if let Some(hicon) = module_hicon {
+            if let Some(hicon) = module_hicon.or_else(|| get_module_icon(module_hwnd)) {
                 apps.push((hicon, module_hwnd));
             }
         }
@@ -448,6 +449,7 @@ impl App {
             index,
             icon_size,
         });
+        debug!("switch apps, new state:{:?}", self.switch_apps_state);
         Ok(())
     }
 

@@ -2,9 +2,9 @@
 
 Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 
-1. ``` alt+` ```: switch between different windows of the same application.
+1. ``` alt + ` ```: switch between different windows of the same application.
 
-2. ``` alt+tab ```: switch between open application. (disabled by default)
+2. ``` alt + tab ```: switch between open application. (disabled by default)
 
 
 ![window-switcher](https://github.com/sigoden/window-switcher/assets/4012553/0ca54685-32a2-4cf2-8410-d3f8bbacd3ce)
@@ -12,6 +12,14 @@ Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 ## Install
 
 Download from the [Github Release](https://github.com/sigoden/windows-switcher/releases), unzip the `window-switcher.exe` file.  Then, you can simply click on the executable file to run the application directly without the need for installation.
+
+## Hotkey Trick 
+
+1. Press ``` alt + ` ``` to switch back to the previous working window(The focus window when ``` alt+` ``` was released last time).
+
+2. Keep pressing `alt`, tap ``` ` ``` to switch to the next window in sequence, tap ``` shift + ` ``` to to switch in reverse.
+
+The same rule applies to `alt + tab`.
 
 ## Configuration
 

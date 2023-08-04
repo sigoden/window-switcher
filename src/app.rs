@@ -4,7 +4,7 @@ use crate::keyboard::KeyboardListener;
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
-    check_error, create_hicon_from_resource, get_foreground_window, get_module_icon,
+    check_error, create_hicon_from_resource, get_foreground_window, get_module_icon_ex,
     get_uwp_icon_data, get_window_user_data, is_iconic_window, list_windows, set_foregound_window,
     set_window_user_data, CheckError,
 };
@@ -385,7 +385,7 @@ impl App {
                     self.uwp_icons.insert(module_path.clone(), data);
                 }
             }
-            if let Some(hicon) = module_hicon.or_else(|| get_module_icon(module_hwnd)) {
+            if let Some(hicon) = module_hicon.or_else(|| get_module_icon_ex(module_path)) {
                 apps.push((hicon, module_hwnd));
             }
         }

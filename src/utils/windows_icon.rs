@@ -33,7 +33,7 @@ fn get_module_icon_ex0(ext: &str) -> Option<SHFILEINFOW> {
                 std::thread::sleep(millis);
             }
         }
-        return None;
+        None
     }
 }
 
@@ -52,7 +52,7 @@ pub fn get_module_icon_ex(ext: &str) -> Option<HICON> {
                     None
                 }
             }
-            Err(_) => return None,
+            Err(_) => None,
         }
     }
 }

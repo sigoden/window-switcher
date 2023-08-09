@@ -195,6 +195,10 @@ pub fn get_class_icon(hwnd: HWND) -> usize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongPtrW(hwnd, GCL_HICON) }
 }
 
+/// Lists available windows
+///
+/// Duo to the limitation of `OpenProcess`, this function will not list `Task Manager`
+/// and others which are running as administrator if `Switcher` is not `running as administrator`.
 pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
     let mut result: IndexMap<String, Vec<(HWND, String)>> = IndexMap::new();
     let mut hwnds: Vec<HWND> = Default::default();

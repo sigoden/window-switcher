@@ -4,33 +4,31 @@ use crate::keyboard::KeyboardListener;
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
-    check_error, create_hicon_from_resource, get_foreground_window, get_module_icon_ex,
-    get_uwp_icon_data, get_window_user_data, is_iconic_window, list_windows, set_foregound_window,
-    set_window_user_data, CheckError,
+    check_error, create_hicon_from_resource, get_foreground_window, get_module_icon,
+    get_module_icon_ex, get_uwp_icon_data, get_window_user_data, is_iconic_window, list_windows,
+    set_foregound_window, set_window_user_data, CheckError,
 };
 
+use crate::painter::{GdiAAPainter, ICON_BORDER_SIZE, WINDOW_BORDER_SIZE};
 use anyhow::{anyhow, Result};
 use indexmap::IndexSet;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use windows::core::PCWSTR;
 use windows::w;
-use windows::Win32::Foundation::{
-    GetLastError, COLORREF, HMODULE, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM,
-};
+use windows::Win32::Foundation::{GetLastError, HMODULE, HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateSolidBrush, EndPaint, FillRect, GetMonitorInfoW, MonitorFromPoint,
-    RedrawWindow, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST, PAINTSTRUCT, RDW_ERASE,
-    RDW_INVALIDATE,
+    GetMonitorInfoW, MonitorFromPoint, RedrawWindow, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+    RDW_ERASE, RDW_INVALIDATE,
 };
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, DrawIconEx, GetCursorPos,
-    GetMessageW, GetWindowLongPtrW, LoadCursorW, PostQuitMessage, RegisterClassW,
-    RegisterWindowMessageW, SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-    TranslateMessage, CW_USEDEFAULT, DI_NORMAL, GWL_STYLE, HICON, HWND_TOPMOST, IDC_ARROW, MSG,
-    SWP_SHOWWINDOW, SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_LBUTTONUP, WM_PAINT, WM_RBUTTONUP,
+    CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, GetCursorPos, GetMessageW,
+    GetWindowLongPtrW, LoadCursorW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
+    SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, CS_HREDRAW,
+    CS_VREDRAW, CW_USEDEFAULT, GWL_STYLE, HICON, HWND_TOPMOST, IDC_ARROW, MSG, SWP_SHOWWINDOW,
+    SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP, WM_PAINT, WM_RBUTTONUP,
     WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
 };
 
@@ -40,12 +38,6 @@ pub const WM_USER_MODIFIER_KEYUP: u32 = 6001;
 pub const WM_USER_HOOTKEY: u32 = 6002;
 pub const IDM_EXIT: u32 = 1;
 pub const IDM_STARTUP: u32 = 2;
-
-const BG_COLOR: COLORREF = COLORREF(0x4c4c4c);
-const FG_COLOR: COLORREF = COLORREF(0x3b3b3b);
-const ICON_SIZE: i32 = 64;
-const WINDOW_BORDER_SIZE: i32 = 10;
-const ICON_BORDER_SIZE: i32 = 4;
 
 pub fn start(config: &Config) -> Result<()> {
     info!("start config={:?}", config);
@@ -65,11 +57,13 @@ pub struct App {
     switch_windows_state: SwitchWindowsState,
     switch_apps_state: Option<SwtichAppsState>,
     uwp_icons: HashMap<String, Vec<u8>>,
+    painter: GdiAAPainter,
 }
 
 impl App {
     pub fn start(config: &Config) -> Result<()> {
         let hwnd = Self::create_window()?;
+        let painter = GdiAAPainter::new(hwnd, 6);
 
         let _foreground_watcher = ForegroundWatcher::init(&config.switch_windows_blacklist)?;
         let _keyboard_listener = KeyboardListener::init(hwnd, &config.to_hotkeys())?;
@@ -92,6 +86,7 @@ impl App {
             },
             switch_apps_state: None,
             uwp_icons: Default::default(),
+            painter,
         };
 
         app.set_trayicon()?;
@@ -129,7 +124,7 @@ impl App {
         let window_class = WNDCLASSW {
             hInstance: hinstance,
             lpszClassName: NAME,
-            hbrBackground: unsafe { CreateSolidBrush(BG_COLOR) },
+            style: CS_HREDRAW | CS_VREDRAW,
             lpfnWndProc: Some(App::window_proc),
             ..Default::default()
         };
@@ -227,6 +222,7 @@ impl App {
                     unsafe {
                         RedrawWindow(hwnd, None, HRGN::default(), RDW_ERASE | RDW_INVALIDATE)
                     };
+                    app.painter.paint(app.switch_apps_state.as_ref().unwrap());
                 }
             }
             WM_LBUTTONUP => {
@@ -254,6 +250,9 @@ impl App {
                         _ => {}
                     }
                 }
+            }
+            WM_ERASEBKGND => {
+                return Ok(LRESULT(0));
             }
             WM_PAINT => {
                 let app = get_app(hwnd)?;
@@ -387,6 +386,8 @@ impl App {
             }
             if let Some(hicon) = module_hicon.or_else(|| get_module_icon_ex(module_path)) {
                 apps.push((hicon, module_hwnd));
+            } else if let Some(hicon) = get_module_icon(module_hwnd) {
+                apps.push((hicon, module_hwnd));
             }
         }
         let num_apps = apps.len() as i32;
@@ -408,12 +409,8 @@ impl App {
         let monitor_rect = mi.rcMonitor;
         let monitor_width = monitor_rect.right - monitor_rect.left;
         let monitor_height = monitor_rect.bottom - monitor_rect.top;
-        let icon_size = ((monitor_width - 2 * WINDOW_BORDER_SIZE) / num_apps
-            - ICON_BORDER_SIZE * 2)
-            .min(ICON_SIZE);
-        let item_size = icon_size + ICON_BORDER_SIZE * 2;
-        let window_width = item_size * num_apps + WINDOW_BORDER_SIZE * 2;
-        let window_height = item_size + WINDOW_BORDER_SIZE * 2;
+        let (icon_size, window_width, window_height) =
+            self.painter.init(monitor_width, apps.len() as i32);
 
         // Calculate the position to center the window
         let x = monitor_rect.left + (monitor_width - window_width) / 2;
@@ -450,52 +447,12 @@ impl App {
             icon_size,
         });
         debug!("switch apps, new state:{:?}", self.switch_apps_state);
+        self.painter.paint(self.switch_apps_state.as_ref().unwrap());
         Ok(())
     }
 
     fn paint(&mut self) -> Result<()> {
-        unsafe {
-            let mut ps = PAINTSTRUCT::default();
-            let hdc = BeginPaint(self.hwnd, &mut ps);
-            if let Some(state) = self.switch_apps_state.as_ref() {
-                let cy = WINDOW_BORDER_SIZE + ICON_BORDER_SIZE;
-                let item_size = state.icon_size + 2 * ICON_BORDER_SIZE;
-                for (i, (hicon, _)) in state.apps.iter().enumerate() {
-                    let brush = if i == state.index {
-                        CreateSolidBrush(FG_COLOR)
-                    } else {
-                        CreateSolidBrush(BG_COLOR)
-                    };
-                    if i == state.index {
-                        let left = WINDOW_BORDER_SIZE + item_size * (i as i32);
-                        let top = WINDOW_BORDER_SIZE;
-                        let right = left + item_size;
-                        let bottom = top + item_size;
-                        let rect = RECT {
-                            left,
-                            top,
-                            right,
-                            bottom,
-                        };
-                        FillRect(hdc, &rect as _, CreateSolidBrush(FG_COLOR));
-                    }
-                    let cx = WINDOW_BORDER_SIZE + item_size * (i as i32) + ICON_BORDER_SIZE;
-                    DrawIconEx(
-                        hdc,
-                        cx,
-                        cy,
-                        *hicon,
-                        state.icon_size,
-                        state.icon_size,
-                        0,
-                        brush,
-                        DI_NORMAL,
-                    );
-                }
-            }
-            EndPaint(self.hwnd, &ps);
-        }
-
+        self.painter.display();
         Ok(())
     }
 
@@ -550,8 +507,8 @@ struct SwitchWindowsState {
 }
 
 #[derive(Debug)]
-struct SwtichAppsState {
-    apps: Vec<(HICON, HWND)>,
-    index: usize,
-    icon_size: i32,
+pub struct SwtichAppsState {
+    pub apps: Vec<(HICON, HWND)>,
+    pub index: usize,
+    pub icon_size: i32,
 }

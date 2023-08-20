@@ -38,8 +38,8 @@ impl Drop for SingleInstance {
     fn drop(&mut self) {
         if let Some(handle) = self.handle.take() {
             unsafe {
-                ReleaseMutex(handle);
-                CloseHandle(handle);
+                let _ = ReleaseMutex(handle);
+                let _ = CloseHandle(handle);
             }
         }
     }

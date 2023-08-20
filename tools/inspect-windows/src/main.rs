@@ -6,7 +6,7 @@ use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindow, GW_OWNER};
 
 fn main() -> Result<()> {
     let mut hwnds: Vec<HWND> = Default::default();
-    unsafe { EnumWindows(Some(enum_window), LPARAM(&mut hwnds as *mut _ as isize)).ok() }
+    unsafe { EnumWindows(Some(enum_window), LPARAM(&mut hwnds as *mut _ as isize)) }
         .map_err(|e| anyhow!("Fail to get windows {}", e))?;
     for hwnd in hwnds {
         let title = get_window_title(hwnd);

@@ -14,9 +14,11 @@ use anyhow::{anyhow, Result};
 use indexmap::IndexSet;
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
+use windows::core::w;
 use windows::core::PCWSTR;
-use windows::w;
-use windows::Win32::Foundation::{GetLastError, HMODULE, HWND, LPARAM, LRESULT, POINT, WPARAM};
+use windows::Win32::Foundation::{
+    GetLastError, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, POINT, WPARAM,
+};
 use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromPoint, RedrawWindow, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST,
     RDW_ERASE, RDW_INVALIDATE,
@@ -104,7 +106,7 @@ impl App {
             let ret = unsafe { GetMessageW(&mut message, HWND(0), 0, 0) };
             match ret.0 {
                 -1 => {
-                    unsafe { GetLastError() }.ok()?;
+                    unsafe { GetLastError() }?;
                 }
                 0 => break,
                 _ => unsafe {
@@ -122,7 +124,7 @@ impl App {
             .map_err(|err| anyhow!("Failed to get current module handle, {err}"))?;
 
         let window_class = WNDCLASSW {
-            hInstance: hinstance,
+            hInstance: HINSTANCE(hinstance.0),
             lpszClassName: NAME,
             style: CS_HREDRAW | CS_VREDRAW,
             lpfnWndProc: Some(App::window_proc),
@@ -400,7 +402,7 @@ impl App {
         };
         unsafe {
             let mut cursor = POINT::default();
-            GetCursorPos(&mut cursor);
+            let _ = GetCursorPos(&mut cursor);
 
             let hmonitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
             GetMonitorInfoW(hmonitor, &mut mi);
@@ -422,7 +424,7 @@ impl App {
                 SetCursor(hcursor);
             }
             SetFocus(hwnd);
-            SetWindowPos(
+            let _ = SetWindowPos(
                 hwnd,
                 HWND_TOPMOST,
                 x,
@@ -484,7 +486,7 @@ impl App {
                 set_foregound_window(*id);
             }
             for (hicon, _) in state.apps {
-                unsafe { DestroyIcon(hicon) };
+                let _ = unsafe { DestroyIcon(hicon) };
             }
             unsafe { ShowWindow(hwnd, SW_HIDE) };
         }

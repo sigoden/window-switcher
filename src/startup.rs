@@ -1,7 +1,7 @@
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
+use windows::core::w;
 use windows::core::PCWSTR;
-use windows::w;
-use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
 use windows::Win32::System::Registry::{
     RegCloseKey, RegDeleteValueW, RegGetValueW, RegOpenKeyExW, RegSetValueExW, HKEY,
     HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_SZ, REG_VALUE_TYPE, RRF_RT_REG_SZ,
@@ -49,19 +49,15 @@ impl Startup {
         let key = get_key()?;
         let path = get_exe_path();
         let path_u8 = unsafe { path.align_to::<u8>().1 };
-        let ret = unsafe { RegSetValueExW(key.hkey, HKEY_NAME, 0, REG_SZ, Some(path_u8)) };
-        if ret != ERROR_SUCCESS {
-            bail!("Fail to write reg value, {:?}", ret);
-        }
+        unsafe { RegSetValueExW(key.hkey, HKEY_NAME, 0, REG_SZ, Some(path_u8)) }
+            .map_err(|err| anyhow!("Fail to write reg value, {:?}", err))?;
         Ok(())
     }
 
     fn disable() -> Result<()> {
         let key = get_key()?;
-        let ret = unsafe { RegDeleteValueW(key.hkey, HKEY_NAME) };
-        if ret != ERROR_SUCCESS {
-            bail!("Fail to delele reg value, {:?}", ret);
-        }
+        unsafe { RegDeleteValueW(key.hkey, HKEY_NAME) }
+            .map_err(|err| anyhow!("Failed to delete reg value, {:?}", err))?;
         Ok(())
     }
 }
@@ -72,13 +68,13 @@ struct WrapHKey {
 
 impl Drop for WrapHKey {
     fn drop(&mut self) {
-        unsafe { RegCloseKey(self.hkey) };
+        let _ = unsafe { RegCloseKey(self.hkey) };
     }
 }
 
 fn get_key() -> Result<WrapHKey> {
     let mut hkey = HKEY::default();
-    let ret = unsafe {
+    unsafe {
         RegOpenKeyExW(
             HKEY_CURRENT_USER,
             HKEY_RUN,
@@ -86,10 +82,8 @@ fn get_key() -> Result<WrapHKey> {
             KEY_ALL_ACCESS,
             &mut hkey as *mut _,
         )
-    };
-    if ret != ERROR_SUCCESS {
-        bail!("Fail to open reg key, {:?}", ret);
     }
+    .map_err(|err| anyhow!("Fail to open reg key, {:?}", err))?;
     Ok(WrapHKey { hkey })
 }
 
@@ -108,11 +102,11 @@ fn get_value(hkey: &HKEY) -> Result<Option<Vec<u16>>> {
             Some(&mut size),
         )
     };
-    if ret != ERROR_SUCCESS {
-        if ret == ERROR_FILE_NOT_FOUND {
+    if let Err(err) = ret {
+        if err.code().0 == ERROR_FILE_NOT_FOUND.0 as _ {
             return Ok(None);
         }
-        bail!("Fail to get reg value, {:?}", ret);
+        bail!("Fail to get reg value, {:?}", err);
     }
     let len = (size as usize - 1) / 2;
     Ok(Some(buffer[..len].to_vec()))

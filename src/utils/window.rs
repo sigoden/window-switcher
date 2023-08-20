@@ -58,7 +58,7 @@ pub fn is_small_window(hwnd: HWND) -> bool {
 
 pub fn get_window_size(hwnd: HWND) -> (i32, i32) {
     let mut placement = WINDOWPLACEMENT::default();
-    unsafe { GetWindowPlacement(hwnd, &mut placement) };
+    let _ = unsafe { GetWindowPlacement(hwnd, &mut placement) };
     let rect = placement.rcNormalPosition;
     ((rect.right - rect.left), (rect.bottom - rect.top))
 }
@@ -99,7 +99,7 @@ pub fn get_module_path(pid: u32) -> Option<String> {
             &mut len,
         )
     };
-    if !ret.as_bool() || len == 0 {
+    if ret.is_err() || len == 0 {
         return None;
     }
     unsafe { name.set_len(len as usize) };
@@ -128,10 +128,10 @@ pub fn set_foregound_window(hwnd: HWND) {
             return;
         }
         if SetForegroundWindow(hwnd).ok().is_err() {
-            AllocConsole();
+            let _ = AllocConsole();
             let hwnd_console = GetConsoleWindow();
-            SetWindowPos(hwnd_console, None, 0, 0, 0, 0, SWP_NOZORDER);
-            FreeConsole();
+            let _ = SetWindowPos(hwnd_console, None, 0, 0, 0, 0, SWP_NOZORDER);
+            let _ = FreeConsole();
             SetForegroundWindow(hwnd);
         }
     };
@@ -202,7 +202,7 @@ pub fn get_class_icon(hwnd: HWND) -> usize {
 pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
     let mut result: IndexMap<String, Vec<(HWND, String)>> = IndexMap::new();
     let mut hwnds: Vec<HWND> = Default::default();
-    unsafe { EnumWindows(Some(enum_window), LPARAM(&mut hwnds as *mut _ as isize)).ok() }
+    unsafe { EnumWindows(Some(enum_window), LPARAM(&mut hwnds as *mut _ as isize)) }
         .map_err(|e| anyhow!("Fail to get windows {}", e))?;
     let mut valid_hwnds = vec![];
     let mut owner_hwnds = vec![];

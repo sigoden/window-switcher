@@ -1,9 +1,9 @@
 use crate::app::SwtichAppsState;
 use windows::Win32::Foundation::{COLORREF, RECT};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, CreatedHDC,
-    DeleteDC, DeleteObject, EndPaint, FillRect, SelectObject, SetStretchBltMode, StretchBlt,
-    HALFTONE, HBITMAP, HBRUSH, PAINTSTRUCT, SRCCOPY,
+    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC,
+    DeleteObject, EndPaint, FillRect, SelectObject, SetStretchBltMode, StretchBlt, HALFTONE,
+    HBITMAP, HBRUSH, HDC, PAINTSTRUCT, SRCCOPY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{DrawIconEx, DI_NORMAL};
 use windows::Win32::{Foundation::HWND, Graphics::Gdi::GetDC};
@@ -22,10 +22,10 @@ pub const ICON_BORDER_SIZE: i32 = 4;
 // GDI Antialiasing Painter
 pub struct GdiAAPainter {
     // memory
-    mem_hdc: CreatedHDC,
+    mem_hdc: HDC,
     mem_map: HBITMAP,
     // scaled
-    scaled_hdc: CreatedHDC,
+    scaled_hdc: HDC,
     scaled_map: HBITMAP,
     // windows handle
     hwnd: HWND,
@@ -140,7 +140,7 @@ impl GdiAAPainter {
         unsafe {
             let mut ps = PAINTSTRUCT::default();
             let hdc = BeginPaint(self.hwnd, &mut ps);
-            BitBlt(
+            let _ = BitBlt(
                 hdc,
                 0,
                 0,
@@ -187,7 +187,7 @@ impl GdiAAPainter {
                 }
 
                 let cx = cy + item_size * (i as i32);
-                DrawIconEx(
+                let _ = DrawIconEx(
                     self.scaled_hdc,
                     cx,
                     cy,

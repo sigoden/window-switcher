@@ -53,7 +53,7 @@ impl Drop for KeyboardListener {
     fn drop(&mut self) {
         debug!("keyboard listener destoryed");
         if !self.hook.is_invalid() {
-            unsafe { UnhookWindowsHookEx(self.hook) };
+            let _ = unsafe { UnhookWindowsHookEx(self.hook) };
         }
     }
 }

@@ -1,8 +1,8 @@
 use crate::app::{IDM_EXIT, IDM_STARTUP, NAME, WM_USER_TRAYICON};
 
 use anyhow::{anyhow, Result};
+use windows::core::w;
 use windows::core::PCWSTR;
-use windows::w;
 use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::UI::Shell::{
     Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
@@ -41,9 +41,7 @@ impl TrayIcon {
             SetForegroundWindow(hwnd)
                 .ok()
                 .map_err(|e| anyhow!("Fail to set foreground window, {}", e))?;
-            GetCursorPos(&mut cursor)
-                .ok()
-                .map_err(|e| anyhow!("Fail to get cursor pos, {}", e))?;
+            GetCursorPos(&mut cursor).map_err(|e| anyhow!("Fail to get cursor pos, {}", e))?;
             let hmenu = self
                 .create_menu(startup)
                 .map_err(|e| anyhow!("Fail to create menu, {}", e))?;
@@ -56,7 +54,6 @@ impl TrayIcon {
                 hwnd,
                 None,
             )
-            .ok()
             .map_err(|e| anyhow!("Fail to show popup menu, {}", e))?
         };
         Ok(())
@@ -89,8 +86,8 @@ impl TrayIcon {
         let startup_flags = if startup { MF_CHECKED } else { MF_UNCHECKED };
         unsafe {
             let hmenu = CreatePopupMenu().map_err(|err| anyhow!("Failed to create menu, {err}"))?;
-            AppendMenuW(hmenu, startup_flags, IDM_STARTUP as usize, TEXT_STARTUP).ok()?;
-            AppendMenuW(hmenu, MF_STRING, IDM_EXIT as usize, TEXT_EXIT).ok()?;
+            AppendMenuW(hmenu, startup_flags, IDM_STARTUP as usize, TEXT_STARTUP)?;
+            AppendMenuW(hmenu, MF_STRING, IDM_EXIT as usize, TEXT_EXIT)?;
             Ok(hmenu)
         }
     }

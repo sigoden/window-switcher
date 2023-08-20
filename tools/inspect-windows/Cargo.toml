@@ -7,11 +7,11 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1"
-indexmap = "1.9.2"
+indexmap = "2.0.0"
 window-switcher = { path = "../.."}
 
 [dependencies.windows]
-version = "0.48.0"
+version = "0.51.1"
 features = [
     "Win32_Foundation",
     "Win32_UI_WindowsAndMessaging",

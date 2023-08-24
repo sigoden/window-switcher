@@ -23,9 +23,9 @@ jobs:
         - i686-pc-windows-msvc
         include:
         - target: x86_64-pc-windows-msvc
-          os: windows-2019
+          os: windows-latest
         - target: i686-pc-windows-msvc
-          os: windows-2019
+          os: windows-latest
 
     runs-on: ${{matrix.os}}
 
@@ -33,31 +33,20 @@ jobs:
       RUSTFLAGS: --deny warnings
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Install Rust Toolchain Components
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
-        components: clippy, rustfmt
-        override: true
-        target: ${{ matrix.target }}
-        toolchain: stable
+        targets: ${{ matrix.target }}
 
-    - uses: Swatinem/rust-cache@v1
-
-    - name: Check Lockfile
-      run: |
-        cargo update --locked --package window-switcher
+    - uses: Swatinem/rust-cache@v2
 
     - name: Test
-      uses: actions-rs/cargo@v1
-      with:
-        use-cross: ${{ matrix.use-cross }}
-        command: test
-        args: --all --target=${{ matrix.target }}
+      run: cargo test --target=${{ matrix.target }} --all
 
     - name: Clippy
       run: cargo clippy --all --all-targets
 
     - name: Format
-      run: cargo fmt --all -- --check
+      run: cargo fmt --all --check

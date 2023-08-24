@@ -18,35 +18,46 @@ jobs:
         - i686-pc-windows-msvc
         include:
         - target: x86_64-pc-windows-msvc
-          os: windows-2019
+          os: windows-latest
         - target: i686-pc-windows-msvc
-          os: windows-2019
+          os: windows-latest
+          use-cross: true
 
     runs-on: ${{matrix.os}}
+    env:
+      BUILD_CMD: cargo
 
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
 
     - name: Check Tag
       id: check-tag
       shell: bash
       run: |
-        tag=${GITHUB_REF##*/}
-        echo "::set-output name=version::$tag"
-        if [[ "$tag" =~ [0-9]+.[0-9]+.[0-9]+$ ]]; then
-          echo "::set-output name=rc::false"
+        ver=${GITHUB_REF##*/}
+        echo "version=$ver" >> $GITHUB_OUTPUT
+        if [[ "$ver" =~ [0-9]+.[0-9]+.[0-9]+$ ]]; then
+          echo "rc=false" >> $GITHUB_OUTPUT
         else
-          echo "::set-output name=rc::true"
+          echo "rc=true" >> $GITHUB_OUTPUT
         fi
 
 
     - name: Install Rust Toolchain Components
-      uses: actions-rs/toolchain@v1
+      uses: dtolnay/rust-toolchain@stable
       with:
-        override: true
-        target: ${{ matrix.target }}
-        toolchain: stable
-        profile: minimal # minimal component installation (ie, no documentation)
+        targets: ${{ matrix.target }}
+
+    - name: Install cross
+      if: matrix.use-cross
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cross
+  
+    - name: Overwrite build command env variable
+      if: matrix.use-cross
+      shell: bash
+      run: echo "BUILD_CMD=cross" >> $GITHUB_ENV
 
     - name: Show Version Information (Rust, cargo, GCC)
       shell: bash
@@ -59,11 +70,8 @@ jobs:
         rustc -V
       
     - name: Build
-      uses: actions-rs/cargo@v1
-      with:
-        use-cross: ${{ matrix.use-cross }}
-        command: build
-        args: --locked --release --target=${{ matrix.target }}
+      shell: bash
+      run: $BUILD_CMD build --locked --release --target=${{ matrix.target }} ${{ matrix.cargo-flags }}
 
     - name: Build Archive
       shell: bash
@@ -75,27 +83,30 @@ jobs:
         set -euxo pipefail
 
         bin=${GITHUB_REPOSITORY##*/}
-        src=`pwd`
-        dist=$src/dist
-        name=$bin-$version
-        executable=target/$target/release/$bin.exe
+        dist_dir=`pwd`/dist
+        name=$bin-$version-$target
+        executable=target/$target/release/$bin
 
-        if [[ "$target" == "i686-pc-windows-msvc" ]]; then
-          name=$name-win32
-        else
-          name=$name-win64
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+          executable=$executable.exe
         fi
 
-        mkdir $dist
-        cp $executable $dist
-        cd $dist
+        mkdir $dist_dir
+        cp $executable $dist_dir
+        cd $dist_dir
 
-        archive=$dist/$name.zip
-        7z a $archive *
-        echo "::set-output name=archive::`pwd -W`/$name.zip"
+        if [[ "$RUNNER_OS" == "Windows" ]]; then
+            archive=$dist_dir/$name.zip
+            7z a $archive *
+            echo "archive=dist/$name.zip" >> $GITHUB_OUTPUT
+        else
+            archive=$dist_dir/$name.tar.gz
+            tar -czf $archive *
+            echo "archive=dist/$name.tar.gz" >> $GITHUB_OUTPUT
+        fi
 
     - name: Publish Archive
-      uses: softprops/action-gh-release@v0.1.5
+      uses: softprops/action-gh-release@v1
       if: ${{ startsWith(github.ref, 'refs/tags/') }}
       with:
         draft: false

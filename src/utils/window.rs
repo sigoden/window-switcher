@@ -223,12 +223,31 @@ pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, 
         owner_hwnds.push(get_owner_window(hwnd))
     }
     for (hwnd, title) in valid_hwnds.into_iter() {
+        let mut rs_module_path = "".to_string();
+        if let Some(module_path) = get_module_path(get_window_pid(hwnd)) {
+            rs_module_path = module_path;
+        }
+        if !rs_module_path.is_empty()
+            && rs_module_path != "C:\\Windows\\System32\\ApplicationFrameHost.exe"
+        {
+            result
+                .entry(rs_module_path)
+                .or_default()
+                .push((hwnd, title));
+            continue;
+        }
         if let Some((i, _)) = owner_hwnds.iter().enumerate().find(|(_, v)| **v == hwnd) {
             if let Some(module_path) = get_module_path(get_window_pid(hwnds[i])) {
-                result.entry(module_path).or_default().push((hwnd, title));
+                rs_module_path = module_path;
             }
-        } else if let Some(module_path) = get_module_path(get_window_pid(hwnd)) {
-            result.entry(module_path).or_default().push((hwnd, title));
+        }
+        if !rs_module_path.is_empty()
+            && rs_module_path != "C:\\Windows\\System32\\ApplicationFrameHost.exe"
+        {
+            result
+                .entry(rs_module_path)
+                .or_default()
+                .push((hwnd, title));
         }
     }
     debug!("list windows {:?}", result);

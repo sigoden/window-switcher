@@ -103,7 +103,7 @@ fn get_value(hkey: &HKEY) -> Result<Option<Vec<u16>>> {
         )
     };
     if let Err(err) = ret {
-        if err.code().0 == ERROR_FILE_NOT_FOUND.0 as _ {
+        if err.code() == ERROR_FILE_NOT_FOUND.to_hresult() {
             return Ok(None);
         }
         bail!("Fail to get reg value, {:?}", err);

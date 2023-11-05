@@ -171,7 +171,7 @@ pub fn get_module_icon(hwnd: HWND) -> Option<HICON> {
 pub fn get_window_user_data(hwnd: HWND) -> i32 {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowLongW(hwnd, GWL_USERDATA) }
 }
-#[cfg(target_arch = "x86_64")]
+#[cfg(not(target_arch = "x86"))]
 pub fn get_window_user_data(hwnd: HWND) -> isize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWL_USERDATA) }
 }
@@ -181,7 +181,7 @@ pub fn set_window_user_data(hwnd: HWND, ptr: i32) -> i32 {
     unsafe { windows::Win32::UI::WindowsAndMessaging::SetWindowLongW(hwnd, GWL_USERDATA, ptr) }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(not(target_arch = "x86"))]
 pub fn set_window_user_data(hwnd: HWND, ptr: isize) -> isize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(hwnd, GWL_USERDATA, ptr) }
 }
@@ -190,7 +190,7 @@ pub fn set_window_user_data(hwnd: HWND, ptr: isize) -> isize {
 pub fn get_class_icon(hwnd: HWND) -> u32 {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongW(hwnd, GCL_HICON) }
 }
-#[cfg(target_arch = "x86_64")]
+#[cfg(not(target_arch = "x86"))]
 pub fn get_class_icon(hwnd: HWND) -> usize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongPtrW(hwnd, GCL_HICON) }
 }

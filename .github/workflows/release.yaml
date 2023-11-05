@@ -91,7 +91,7 @@ jobs:
 
         bin=${GITHUB_REPOSITORY##*/}
         dist_dir=`pwd`/dist
-        name=$bin-$platform
+        name=$bin-$version-$platform
         executable=target/$target/release/$bin
 
         if [[ "$RUNNER_OS" == "Windows" ]]; then

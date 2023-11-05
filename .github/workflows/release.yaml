@@ -19,8 +19,14 @@ jobs:
         include:
         - target: x86_64-pc-windows-msvc
           os: windows-latest
+          platform: windows-64
         - target: i686-pc-windows-msvc
           os: windows-latest
+          platform: windows-32
+          use-cross: true
+        - target: aarch64-pc-windows-msvc
+          os: windows-latest
+          platform: windows-arm
           use-cross: true
 
     runs-on: ${{matrix.os}}
@@ -78,13 +84,14 @@ jobs:
       id: package
       env:
         target: ${{ matrix.target }}
+        platform: ${{ matrix.platform }}
         version:  ${{ steps.check-tag.outputs.version }}
       run: |
         set -euxo pipefail
 
         bin=${GITHUB_REPOSITORY##*/}
         dist_dir=`pwd`/dist
-        name=$bin-$version-$target
+        name=$bin-$version-$platform
         executable=target/$target/release/$bin
 
         if [[ "$RUNNER_OS" == "Windows" ]]; then

@@ -5,34 +5,12 @@ use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindow, GW_OWNER};
 
 fn main() -> Result<()> {
-    for window_info in collect_windows_info()? {
-        let WindowInfo {
-            hwnd,
-            title,
-            owner_hwnd,
-            owner_title,
-            size,
-            is_visible,
-            is_cloaked,
-            is_iconic,
-            is_topmost,
-        } = window_info;
-
-        let size = format!("{}x{}", size.0, size.1);
-
-        println!(
-            "visible:{}cloacked{}iconic{}topmost:{} {:>10} {:>10}:{} {}:{}",
-            pretty_bool(is_visible),
-            pretty_bool(is_cloaked),
-            pretty_bool(is_iconic),
-            pretty_bool(is_topmost),
-            size,
-            hwnd.0,
-            title,
-            owner_hwnd.0,
-            owner_title
-        );
-    }
+    let output = collect_windows_info()?
+        .iter()
+        .map(|v| v.stringify())
+        .collect::<Vec<String>>()
+        .join("\n");
+    println!("{output}");
     Ok(())
 }
 
@@ -47,6 +25,24 @@ struct WindowInfo {
     is_cloaked: bool,
     is_iconic: bool,
     is_topmost: bool,
+}
+
+impl WindowInfo {
+    pub fn stringify(&self) -> String {
+        let size = format!("{}x{}", self.size.0, self.size.1);
+        format!(
+            "visible:{}cloacked{}iconic{}topmost:{} {:>10} {:>10}:{} {}:{}",
+            pretty_bool(self.is_visible),
+            pretty_bool(self.is_cloaked),
+            pretty_bool(self.is_iconic),
+            pretty_bool(self.is_topmost),
+            size,
+            self.hwnd.0,
+            self.title,
+            self.owner_hwnd.0,
+            self.owner_title
+        )
+    }
 }
 
 fn collect_windows_info() -> anyhow::Result<Vec<WindowInfo>> {

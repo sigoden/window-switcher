@@ -15,14 +15,16 @@ Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 
 1. Download `windows-switcher.zip` from the [Github Release](https://github.com/sigoden/windows-switcher/releases).
 2. Extract `window-switcher.exe` from zip file. It is a single executable file that does not require installation.
-3. Double click on `window-switcher.exe`. Congratulations, you have successfully run Window-Switcher. Try the hotkeys.
+3. Double click on `window-switcher.exe`. Congratulations, you have successfully run Window-Switcher.
 
 
 ## Configuration
 
-You can configure following items by creating a `window-switcher.ini` file in the same directory as `window-switcher.exe`:
+The window-switcher supports custom shortcuts, enabling and disabling certain functions, and all of these can be set through the configuration file.
 
-The default configuration is as follows:
+The configuration file must be named `window-switcher.ini` and located in the same directory as `window-switcher.exe` for the changes to take effect.  
+
+Here is the default configuration:
 
 ```ini
 # Whether to show trayicon, yes/no

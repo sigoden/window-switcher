@@ -42,8 +42,8 @@ ignore_minimal = no
 
 [switch-apps]
 
-# Whether to enable switching apps
-enable = no                       # 👈 Change the value to `yes` to enable Alt-TAB hotkey.
+# 👇👇 Whether to enable switching apps
+enable = no 
 
 # Hotkey to switch apps
 hotkey = alt+tab

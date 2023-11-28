@@ -2,14 +2,15 @@
 
 Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 
-1. ```ALT+`(backtick)```: switch between different windows of the same application.
+1. ```Alt+`(backtick)```: switch between windows of the same app.
 
-![switch-windows](https://github.com/sigoden/window-switcher/assets/4012553/aca461f2-2381-4477-8ad3-8bb15776675b)
+![switch-windows](https://github.com/sigoden/window-switcher/assets/4012553/06d387ce-31fd-450b-adf3-01bfcfc4bce3)
 
-2. ```ALT+TAB```: switch between open application. (disabled by default)
+2. ```Alt+Tab```: switch between apps. (disabled by default)
 
-![switch-apps](https://github.com/sigoden/window-switcher/assets/4012553/b3eda588-36eb-45cc-9271-30115de9eb32)
+![switch-apps](https://github.com/sigoden/window-switcher/assets/4012553/0c74a7ca-3a48-4458-8d2d-b40dc041f067)
 
+**Press and hold alt to switch in cycles, click on alt to switch with the previous one.**
 
 ## Install
 
@@ -44,7 +45,7 @@ ignore_minimal = no
 
 [switch-apps]
 
-# 👇👇 Whether to enable switching apps
+# Whether to enable switching apps
 enable = no 
 
 # Hotkey to switch apps

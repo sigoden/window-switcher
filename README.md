@@ -15,7 +15,7 @@ Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 ## Install
 
  Download `windows-switcher.zip` from the [Github Release](https://github.com/sigoden/windows-switcher/releases), extract `window-switcher.exe`, run it. 
-> window-switcher.exe is a 500K portable single-file program. No installation is required.
+> window-switcher.exe is a portable single-file program (less than 500 KB in size). No installation is required.
 
 
 ## Configuration

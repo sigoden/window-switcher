@@ -56,7 +56,7 @@ ignore_minimal = no
 
 ## License
 
-Copyright (c) 2023 window-switcher-developers.
+Copyright (c) 2023-2024 window-switcher-developers.
 
 window-switcher is made available under the terms of the MIT License, at your option.
 

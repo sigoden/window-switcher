@@ -54,6 +54,7 @@ impl TrayIcon {
                 hwnd,
                 None,
             )
+            .ok()
             .map_err(|e| anyhow!("Fail to show popup menu, {}", e))?
         };
         Ok(())

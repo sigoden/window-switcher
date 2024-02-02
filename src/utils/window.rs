@@ -119,7 +119,7 @@ pub fn get_window_exe(hwnd: HWND) -> Option<String> {
     module_path.split('\\').map(|v| v.to_string()).last()
 }
 
-pub fn set_foregound_window(hwnd: HWND) {
+pub fn set_foreground_window(hwnd: HWND) {
     unsafe {
         if is_iconic_window(hwnd) {
             ShowWindow(hwnd, SW_RESTORE);

@@ -1,4 +1,4 @@
-use crate::app::SwtichAppsState;
+use crate::app::SwitchAppsState;
 use windows::Win32::Foundation::{COLORREF, RECT};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC,
@@ -116,7 +116,7 @@ impl GdiAAPainter {
     }
 
     /// Draw state onto hdc in memory
-    pub fn paint(&mut self, state: &SwtichAppsState) {
+    pub fn paint(&mut self, state: &SwitchAppsState) {
         self.paint0(state);
         unsafe {
             SetStretchBltMode(self.mem_hdc, HALFTONE);
@@ -155,7 +155,7 @@ impl GdiAAPainter {
         }
     }
 
-    fn paint0(&mut self, state: &SwtichAppsState) {
+    fn paint0(&mut self, state: &SwitchAppsState) {
         unsafe {
             // draw background
             let rect = RECT {

@@ -42,7 +42,7 @@ fn load_config() -> Result<Config> {
     let folder = get_exe_folder()?;
     let ini_file = folder.join("window-switcher.ini");
     let conf =
-        Ini::load_from_file(ini_file).map_err(|err| anyhow!("Faile to load ini file, {err}"))?;
+        Ini::load_from_file(ini_file).map_err(|err| anyhow!("Failed to load ini file, {err}"))?;
     Config::load(&conf)
 }
 

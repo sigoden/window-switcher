@@ -1,7 +1,7 @@
 use crate::{
     app::{WM_USER_HOOTKEY, WM_USER_MODIFIER_KEYUP},
     config::{Hotkey, SWITCH_WINDOWS_HOTKEY_ID},
-    foregound::IS_FOREGROUND_IN_BLACKLIST,
+    foreground::IS_FOREGROUND_IN_BLACKLIST,
 };
 
 use anyhow::{anyhow, Result};
@@ -51,7 +51,7 @@ impl KeyboardListener {
 
 impl Drop for KeyboardListener {
     fn drop(&mut self) {
-        debug!("keyboard listener destoryed");
+        debug!("keyboard listener destroyed");
         if !self.hook.is_invalid() {
             let _ = unsafe { UnhookWindowsHookEx(self.hook) };
         }

@@ -6,7 +6,7 @@ extern crate log;
 
 mod app;
 mod config;
-mod foregound;
+mod foreground;
 mod keyboard;
 mod painter;
 mod startup;

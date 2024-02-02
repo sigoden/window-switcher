@@ -1,12 +1,12 @@
 use crate::config::Config;
-use crate::foregound::ForegroundWatcher;
+use crate::foreground::ForegroundWatcher;
 use crate::keyboard::KeyboardListener;
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
     check_error, create_hicon_from_resource, get_foreground_window, get_module_icon,
     get_module_icon_ex, get_uwp_icon_data, get_window_user_data, is_iconic_window, list_windows,
-    set_foregound_window, set_window_user_data, CheckError,
+    set_foreground_window, set_window_user_data, CheckError,
 };
 
 use crate::painter::{GdiAAPainter, ICON_BORDER_SIZE, WINDOW_BORDER_SIZE};
@@ -57,7 +57,7 @@ pub struct App {
     startup: Startup,
     config: Config,
     switch_windows_state: SwitchWindowsState,
-    switch_apps_state: Option<SwtichAppsState>,
+    switch_apps_state: Option<SwitchAppsState>,
     uwp_icons: HashMap<String, Vec<u8>>,
     painter: GdiAAPainter,
 }
@@ -341,7 +341,7 @@ impl App {
                     cache: Some((module_path.clone(), state_id, index, state_windows)),
                     modifier_released: false,
                 };
-                set_foregound_window(hwnd);
+                set_foreground_window(hwnd);
 
                 Ok(true)
             }
@@ -443,7 +443,7 @@ impl App {
             1
         };
 
-        self.switch_apps_state = Some(SwtichAppsState {
+        self.switch_apps_state = Some(SwitchAppsState {
             apps,
             index,
             icon_size,
@@ -483,7 +483,7 @@ impl App {
         let hwnd = self.hwnd;
         if let Some(state) = self.switch_apps_state.take() {
             if let Some((_, id)) = state.apps.get(state.index) {
-                set_foregound_window(*id);
+                set_foreground_window(*id);
             }
             for (hicon, _) in state.apps {
                 let _ = unsafe { DestroyIcon(hicon) };
@@ -509,7 +509,7 @@ struct SwitchWindowsState {
 }
 
 #[derive(Debug)]
-pub struct SwtichAppsState {
+pub struct SwitchAppsState {
     pub apps: Vec<(HICON, HWND)>,
     pub index: usize,
     pub icon_size: i32,

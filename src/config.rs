@@ -237,18 +237,18 @@ impl Hotkey {
             "numlock" => 0x90,
             "scrolllock" => 0x91,
 
-            ":" | ";" => 0xba,  // VK_OEM_1
-            "+" | "=" => 0xbb,  // VK_OEM_PLUS
-            "<" | "," => 0xbc,  // VK_OEM_COMMA
-            "-" | "_" => 0xbd,  // VK_OEM_MINUS
-            ">" | "." => 0xbe,  // VK_OEM_PERIOD
-            "?" | "/" => 0xbf,  // VK_OEM_2
-            "~" | "`" => 0xc0,  // VK_OEM_3
-            "{" | "[" => 0xdb,  // VK_OEM_4
-            "|" | "\\" => 0xdc, // VK_OEM_5
-            "}" | "]" => 0xdd,  // VK_OEM_6
-            "\"" | "'" => 0xde, // VK_OEM_7
-            "§" | "!" => 0xdf,  // VK_OEM_8
+            ":" | ";" | "vk_oem_1" => 0xba,
+            "+" | "=" | "vk_oem_plus" => 0xbb,
+            "<" | "," | "vk_oem_comma" => 0xbc,
+            "-" | "_" | "vk_oem_minus" => 0xbd,
+            ">" | "." | "vk_oem_period" => 0xbe,
+            "?" | "/" | "vk_oem_2" => 0xbf,
+            "~" | "`" | "vk_oem_3" => 0xc0,
+            "{" | "[" | "vk_oem_4" => 0xdb,
+            "|" | "\\" | "vk_oem_5" => 0xdc,
+            "}" | "]" | "vk_oem_6" => 0xdd,
+            "\"" | "'" | "vk_oem_7" => 0xde,
+            "§" | "!" | "vk_oem_8" => 0xdf,
             _ => return None,
         };
         Some((modifier, code))

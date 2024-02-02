@@ -314,7 +314,7 @@ impl App {
                                 for id in cache_windows {
                                     if windows_set.contains(id) {
                                         state_windows.push(*id);
-                                        windows_set.remove(id);
+                                        windows_set.swap_remove(id);
                                     }
                                 }
                                 state_windows.extend(windows_set);

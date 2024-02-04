@@ -10,7 +10,7 @@ Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 
 ![switch-apps](https://github.com/sigoden/window-switcher/assets/4012553/0c74a7ca-3a48-4458-8d2d-b40dc041f067)
 
-Tips: **Hold `Alt` and click `Backtick/Tab` to cycle through, press `Alt+Backtick/Tab` to switch to the previous one.**
+Tips: **Hold `Alt` and strike `Backtick/Tab` to cycle through, press `Alt + Backtick/Tab` to switch to the previous one.**
 
 ## Install
 

@@ -53,7 +53,7 @@ pub fn is_cloaked_window(hwnd: HWND) -> bool {
 
 pub fn is_small_window(hwnd: HWND) -> bool {
     let (width, height) = get_window_size(hwnd);
-    width + height < 250
+    width < 120 || height < 90
 }
 
 pub fn get_window_size(hwnd: HWND) -> (i32, i32) {

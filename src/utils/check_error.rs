@@ -15,7 +15,7 @@ where
         SetLastError(ERROR_SUCCESS);
         let result = f();
         let error = Error::from_win32();
-        if error == Error::OK {
+        if error == Error::empty() {
             Ok(result)
         } else {
             Err(error)

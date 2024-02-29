@@ -50,6 +50,7 @@ impl Startup {
         let path = get_exe_path();
         let path_u8 = unsafe { path.align_to::<u8>().1 };
         unsafe { RegSetValueExW(key.hkey, HKEY_NAME, 0, REG_SZ, Some(path_u8)) }
+            .ok()
             .map_err(|err| anyhow!("Fail to write reg value, {:?}", err))?;
         Ok(())
     }
@@ -57,6 +58,7 @@ impl Startup {
     fn disable() -> Result<()> {
         let key = get_key()?;
         unsafe { RegDeleteValueW(key.hkey, HKEY_NAME) }
+            .ok()
             .map_err(|err| anyhow!("Failed to delete reg value, {:?}", err))?;
         Ok(())
     }
@@ -83,6 +85,7 @@ fn get_key() -> Result<WrapHKey> {
             &mut hkey as *mut _,
         )
     }
+    .ok()
     .map_err(|err| anyhow!("Fail to open reg key, {:?}", err))?;
     Ok(WrapHKey { hkey })
 }
@@ -102,11 +105,14 @@ fn get_value(hkey: &HKEY) -> Result<Option<Vec<u16>>> {
             Some(&mut size),
         )
     };
-    if let Err(err) = ret {
-        if err.code() == ERROR_FILE_NOT_FOUND.to_hresult() {
+    if ret.is_err() {
+        if ret == ERROR_FILE_NOT_FOUND {
             return Ok(None);
         }
-        bail!("Fail to get reg value, {:?}", err);
+        bail!(
+            "Fail to get reg value, {:?}",
+            windows::core::Error::from(ret)
+        );
     }
     let len = (size as usize - 1) / 2;
     Ok(Some(buffer[..len].to_vec()))

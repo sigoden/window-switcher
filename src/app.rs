@@ -106,7 +106,7 @@ impl App {
             let ret = unsafe { GetMessageW(&mut message, HWND(0), 0, 0) };
             match ret.0 {
                 -1 => {
-                    unsafe { GetLastError() }?;
+                    unsafe { GetLastError() }.ok()?;
                 }
                 0 => break,
                 _ => unsafe {

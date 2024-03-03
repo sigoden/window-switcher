@@ -224,7 +224,9 @@ impl App {
                     unsafe {
                         RedrawWindow(hwnd, None, HRGN::default(), RDW_ERASE | RDW_INVALIDATE)
                     };
-                    app.painter.paint(app.switch_apps_state.as_ref().unwrap());
+                    if let Some(state) = &app.switch_apps_state {
+                        app.painter.paint(state);
+                    }
                 }
             }
             WM_LBUTTONUP => {
@@ -449,7 +451,6 @@ impl App {
             icon_size,
         });
         debug!("switch apps, new state:{:?}", self.switch_apps_state);
-        self.painter.paint(self.switch_apps_state.as_ref().unwrap());
         Ok(())
     }
 

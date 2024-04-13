@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use windows::core::PWSTR;
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, MAX_PATH, TRUE, WPARAM};
+use windows::Win32::Foundation::{CloseHandle, BOOL, HWND, LPARAM, MAX_PATH, TRUE, WPARAM};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::System::Console::{AllocConsole, FreeConsole, GetConsoleWindow};
 use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
@@ -20,7 +20,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::PathBuf;
-use std::{ffi::c_void, mem::size_of};
+use std::{ffi::c_void, mem, mem::size_of};
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
 use xml::reader::XmlEvent;
 use xml::EventReader;
 
@@ -110,6 +113,31 @@ pub fn get_module_path(pid: u32) -> Option<String> {
     Some(module_path)
 }
 
+pub fn get_module_path_ex(pid: u32) -> Option<String> {
+    unsafe {
+        let mut buffer: Vec<u16> = vec![];
+        if let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) {
+            let mut pe = PROCESSENTRY32W::default();
+            pe.dwSize = mem::size_of_val(&pe) as u32;
+            if Process32FirstW(snap, &mut pe).is_ok() {
+                while pe.th32ProcessID != pid {
+                    if Process32NextW(snap, &mut pe).is_err() {
+                        break;
+                    }
+                }
+                buffer = pe.szExeFile.to_vec()
+            }
+            if CloseHandle(snap).is_err() {
+                // handle error if needed
+            }
+        }
+        if !buffer.is_empty() {
+            return Some(String::from_utf16_lossy(&buffer));
+        }
+    }
+    None
+}
+
 pub fn get_window_exe(hwnd: HWND) -> Option<String> {
     let pid = get_window_pid(hwnd);
     if pid == 0 {
@@ -195,10 +223,6 @@ pub fn get_class_icon(hwnd: HWND) -> usize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongPtrW(hwnd, GCL_HICON) }
 }
 
-/// Lists available windows
-///
-/// Duo to the limitation of `OpenProcess`, this function will not list `Task Manager`
-/// and others which are running as administrator if `Switcher` is not `running as administrator`.
 pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
     let mut result: IndexMap<String, Vec<(HWND, String)>> = IndexMap::new();
     let mut hwnds: Vec<HWND> = Default::default();
@@ -226,6 +250,8 @@ pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, 
         let mut rs_module_path = "".to_string();
         if let Some(module_path) = get_module_path(get_window_pid(hwnd)) {
             rs_module_path = module_path;
+        } else if let Some(module_path) = get_module_path_ex(get_window_pid(hwnd)) {
+            rs_module_path = module_path;
         }
         if !rs_module_path.is_empty()
             && rs_module_path != "C:\\Windows\\System32\\ApplicationFrameHost.exe"
@@ -238,6 +264,8 @@ pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, 
         }
         if let Some((i, _)) = owner_hwnds.iter().enumerate().find(|(_, v)| **v == hwnd) {
             if let Some(module_path) = get_module_path(get_window_pid(hwnds[i])) {
+                rs_module_path = module_path;
+            } else if let Some(module_path) = get_module_path_ex(get_window_pid(hwnd)) {
                 rs_module_path = module_path;
             }
         }

@@ -55,7 +55,7 @@ hotkey = alt+tab
 ignore_minimal = no
 ```
 
-## Running as Administrator at Logon
+## Running as Administrator at Logon (Optional)
 
 Running `window-switcher.exe` with standard permissions limits its functionality, especially when interacting with system apps like Task Manager that require admin rights. Elevating its privileges enables seamless interaction with all applications.
 

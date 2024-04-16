@@ -15,6 +15,7 @@ Tips: **Hold `Alt` and strike `Backtick/Tab` to cycle through, press `Alt + Back
 ## Install
 
  Download `windows-switcher.zip` from the [Github Release](https://github.com/sigoden/windows-switcher/releases), extract `window-switcher.exe`, run it. 
+
 > window-switcher.exe is a portable single-file program (less than 500 KB in size). No installation is required.
 
 
@@ -52,6 +53,36 @@ hotkey = alt+tab
 
 # Ignore minimal windows
 ignore_minimal = no
+```
+
+## Running as Administrator at Logon
+
+Running `window-switcher.exe` with standard permissions limits its functionality, especially when interacting with system apps like Task Manager that require admin rights. Elevating its privileges enables seamless interaction with all applications.
+
+You can easily accomplish this using Task Scheduler. Just follow these steps:
+
+1. **Open Task Scheduler**: You can do this by searching for "Task Scheduler" in the Start menu.
+2. **Create a New Task**: In the Task Scheduler, navigate to "Action" > "Create Task..."
+3. **Configure General Tab**:
+    - Give your task a name (e.g. WindowSwitcher)
+    - Check "Run only when user is logged on".
+    - Check "Run with highest privileges".
+4. **Configure Triggers Tab**: 
+    - Click "New..."
+    - For "Begin the task", choose "At logo on" 
+    - For "Settings", check "Special User" 
+5. **Configure Actions Tab**:
+    - Click "New...".
+    - For "Action", choose "Start a program".
+    - Browse and select the program you want to start or input the path manually.
+6. **OK/Save**: Once you've configured your task, click "OK" to save it. You might be prompted to enter an admin password.
+
+For your convenience, we've provided a PowerShell script that automates the process.
+
+Run the following script in an administrator PowerShell window:
+
+```ps1
+.\run-as-admin-at-logon.ps1 <path-to-window-switcher.exe>
 ```
 
 ## License

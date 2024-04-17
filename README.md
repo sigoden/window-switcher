@@ -61,8 +61,8 @@ While not mandatory, running `window-switcher.exe` with administrator privileges
 
 **Administrator Privileges and Startup Options:**
 
-* **Running as Admin + Enabling Startup:** Launches `window-switcher.exe` with full admin rights every time you start your computer.
-* **Running without Admin + Enabling Startup:** Starts `window-switcher.exe` with regular user privileges at startup.
+* **Running as Admin + Enabling Startup:** Launches `window-switcher.exe` with administrator privileges every time you start your computer.
+* **Running without Admin + Enabling Startup:** Launches `window-switcher.exe` with regular user privileges at startup.
 
 ## License
 

@@ -6,12 +6,14 @@ use windows::Win32::System::Registry::{
     HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_SZ, REG_VALUE_TYPE, RRF_RT_REG_SZ,
 };
 
+#[derive(Debug)]
 pub struct RegKey {
     hkey: HKEY,
+    name: PCWSTR,
 }
 
 impl RegKey {
-    pub fn new_hkcu(subkey: PCWSTR) -> Result<RegKey> {
+    pub fn new_hkcu(subkey: PCWSTR, name: PCWSTR) -> Result<RegKey> {
         let mut hkey = HKEY::default();
         unsafe {
             RegOpenKeyExW(
@@ -24,10 +26,10 @@ impl RegKey {
         }
         .ok()
         .map_err(|err| anyhow!("Fail to open reg key, {:?}", err))?;
-        Ok(RegKey { hkey })
+        Ok(RegKey { hkey, name })
     }
 
-    pub fn get_value(&self, name: PCWSTR) -> Result<Option<Vec<u16>>> {
+    pub fn get_value(&self) -> Result<Option<Vec<u16>>> {
         let mut buffer = [0u16; 1024];
         let mut size: u32 = (1024 * std::mem::size_of_val(&buffer[0])) as u32;
         let mut kind: REG_VALUE_TYPE = Default::default();
@@ -35,7 +37,7 @@ impl RegKey {
             RegGetValueW(
                 self.hkey,
                 None,
-                name,
+                self.name,
                 RRF_RT_REG_SZ,
                 Some(&mut kind),
                 Some(buffer.as_mut_ptr() as *mut _),
@@ -55,15 +57,15 @@ impl RegKey {
         Ok(Some(buffer[..len].to_vec()))
     }
 
-    pub fn set_value(&self, name: PCWSTR, value: &[u8]) -> Result<()> {
-        unsafe { RegSetValueExW(self.hkey, name, 0, REG_SZ, Some(value)) }
+    pub fn set_value(&self, value: &[u8]) -> Result<()> {
+        unsafe { RegSetValueExW(self.hkey, self.name, 0, REG_SZ, Some(value)) }
             .ok()
             .map_err(|err| anyhow!("Fail to write reg value, {:?}", err))?;
         Ok(())
     }
 
-    pub fn delete_value(&self, name: PCWSTR) -> Result<()> {
-        unsafe { RegDeleteValueW(self.hkey, name) }
+    pub fn delete_value(&self) -> Result<()> {
+        unsafe { RegDeleteValueW(self.hkey, self.name) }
             .ok()
             .map_err(|err| anyhow!("Failed to delete reg value, {:?}", err))?;
         Ok(())

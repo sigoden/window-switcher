@@ -33,7 +33,7 @@ impl Startup {
 
     fn detect() -> Result<bool> {
         let key = win_run_key()?;
-        let value = match key.get_value(HKEY_NAME)? {
+        let value = match key.get_value()? {
             Some(value) => value,
             None => return Ok(false),
         };
@@ -45,17 +45,17 @@ impl Startup {
         let key = win_run_key()?;
         let path = get_exe_path();
         let path = unsafe { path.align_to::<u8>().1 };
-        key.set_value(HKEY_NAME, path)?;
+        key.set_value(path)?;
         Ok(())
     }
 
     fn disable() -> Result<()> {
         let key = win_run_key()?;
-        key.delete_value(HKEY_NAME)?;
+        key.delete_value()?;
         Ok(())
     }
 }
 
 fn win_run_key() -> Result<RegKey> {
-    RegKey::new_hkcu(HKEY_RUN)
+    RegKey::new_hkcu(HKEY_RUN, HKEY_NAME)
 }

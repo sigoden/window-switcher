@@ -1,13 +1,9 @@
-use anyhow::{anyhow, bail, Result};
+use anyhow::Result;
 use windows::core::w;
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
-use windows::Win32::System::Registry::{
-    RegCloseKey, RegDeleteValueW, RegGetValueW, RegOpenKeyExW, RegSetValueExW, HKEY,
-    HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_SZ, REG_VALUE_TYPE, RRF_RT_REG_SZ,
-};
 
 use crate::utils::get_exe_path;
+use crate::utils::RegKey;
 
 const HKEY_RUN: PCWSTR = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
 const HKEY_NAME: PCWSTR = w!("Window Switcher");
@@ -36,8 +32,8 @@ impl Startup {
     }
 
     fn detect() -> Result<bool> {
-        let key = get_key()?;
-        let value = match get_value(&key.hkey)? {
+        let key = win_run_key()?;
+        let value = match key.get_value(HKEY_NAME)? {
             Some(value) => value,
             None => return Ok(false),
         };
@@ -46,74 +42,20 @@ impl Startup {
     }
 
     fn enable() -> Result<()> {
-        let key = get_key()?;
+        let key = win_run_key()?;
         let path = get_exe_path();
-        let path_u8 = unsafe { path.align_to::<u8>().1 };
-        unsafe { RegSetValueExW(key.hkey, HKEY_NAME, 0, REG_SZ, Some(path_u8)) }
-            .ok()
-            .map_err(|err| anyhow!("Fail to write reg value, {:?}", err))?;
+        let path = unsafe { path.align_to::<u8>().1 };
+        key.set_value(HKEY_NAME, path)?;
         Ok(())
     }
 
     fn disable() -> Result<()> {
-        let key = get_key()?;
-        unsafe { RegDeleteValueW(key.hkey, HKEY_NAME) }
-            .ok()
-            .map_err(|err| anyhow!("Failed to delete reg value, {:?}", err))?;
+        let key = win_run_key()?;
+        key.delete_value(HKEY_NAME)?;
         Ok(())
     }
 }
 
-struct WrapHKey {
-    hkey: HKEY,
-}
-
-impl Drop for WrapHKey {
-    fn drop(&mut self) {
-        let _ = unsafe { RegCloseKey(self.hkey) };
-    }
-}
-
-fn get_key() -> Result<WrapHKey> {
-    let mut hkey = HKEY::default();
-    unsafe {
-        RegOpenKeyExW(
-            HKEY_CURRENT_USER,
-            HKEY_RUN,
-            0,
-            KEY_ALL_ACCESS,
-            &mut hkey as *mut _,
-        )
-    }
-    .ok()
-    .map_err(|err| anyhow!("Fail to open reg key, {:?}", err))?;
-    Ok(WrapHKey { hkey })
-}
-
-fn get_value(hkey: &HKEY) -> Result<Option<Vec<u16>>> {
-    let mut buffer = [0u16; 1024];
-    let mut size: u32 = (1024 * std::mem::size_of_val(&buffer[0])) as u32;
-    let mut kind: REG_VALUE_TYPE = Default::default();
-    let ret = unsafe {
-        RegGetValueW(
-            *hkey,
-            None,
-            HKEY_NAME,
-            RRF_RT_REG_SZ,
-            Some(&mut kind),
-            Some(buffer.as_mut_ptr() as *mut _),
-            Some(&mut size),
-        )
-    };
-    if ret.is_err() {
-        if ret == ERROR_FILE_NOT_FOUND {
-            return Ok(None);
-        }
-        bail!(
-            "Fail to get reg value, {:?}",
-            windows::core::Error::from(ret)
-        );
-    }
-    let len = (size as usize - 1) / 2;
-    Ok(Some(buffer[..len].to_vec()))
+fn win_run_key() -> Result<RegKey> {
+    RegKey::new_hkcu(HKEY_RUN)
 }

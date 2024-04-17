@@ -1,9 +1,11 @@
 mod check_error;
+mod regedit;
 mod single_instance;
 mod window;
 mod windows_icon;
 
 pub use check_error::*;
+pub use regedit::*;
 pub use single_instance::*;
 pub use window::*;
 pub use windows_icon::get_module_icon_ex;

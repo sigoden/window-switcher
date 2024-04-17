@@ -55,35 +55,14 @@ hotkey = alt+tab
 ignore_minimal = no
 ```
 
-## Running as Administrator at Logon (Optional)
+## Running as Administrator (Optional)
 
-Running `window-switcher.exe` with standard permissions limits its functionality, especially when interacting with system apps like Task Manager that require admin rights. Elevating its privileges enables seamless interaction with all applications.
+While not mandatory, running `window-switcher.exe` with administrator privileges unlocks its full potential, especially when working with system applications like Task Manager that require elevated permissions. This allows for smoother interactions with all types of applications.
 
-You can easily accomplish this using Task Scheduler. Just follow these steps:
+**Administrator Privileges and Startup Options:**
 
-1. **Open Task Scheduler**: You can do this by searching for "Task Scheduler" in the Start menu.
-2. **Create a New Task**: In the Task Scheduler, navigate to "Action" > "Create Task..."
-3. **Configure General Tab**:
-    - Give your task a name (e.g. WindowSwitcher)
-    - Check "Run only when user is logged on".
-    - Check "Run with highest privileges".
-4. **Configure Triggers Tab**: 
-    - Click "New..."
-    - For "Begin the task", choose "At logo on" 
-    - For "Settings", check "Special User" 
-5. **Configure Actions Tab**:
-    - Click "New...".
-    - For "Action", choose "Start a program".
-    - Browse and select the program you want to start or input the path manually.
-6. **OK/Save**: Once you've configured your task, click "OK" to save it. You might be prompted to enter an admin password.
-
-For your convenience, we've provided a PowerShell script that automates the process.
-
-Run the following script in an administrator PowerShell window:
-
-```ps1
-.\run-as-admin-at-logon.ps1 <path-to-window-switcher.exe>
-```
+* **Running as Admin + Enabling Startup:** Launches `window-switcher.exe` with administrator privileges every time you start your computer.
+* **Running without Admin + Enabling Startup:** Launches `window-switcher.exe` with regular user privileges at startup.
 
 ## License
 

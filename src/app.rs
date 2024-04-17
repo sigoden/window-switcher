@@ -5,8 +5,8 @@ use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
     check_error, create_hicon_from_resource, get_foreground_window, get_module_icon,
-    get_module_icon_ex, get_uwp_icon_data, get_window_user_data, is_iconic_window, list_windows,
-    set_foreground_window, set_window_user_data, CheckError,
+    get_module_icon_ex, get_uwp_icon_data, get_window_user_data, is_iconic_window,
+    is_running_as_admin, list_windows, set_foreground_window, set_window_user_data, CheckError,
 };
 
 use crate::painter::{GdiAAPainter, ICON_BORDER_SIZE, WINDOW_BORDER_SIZE};
@@ -75,7 +75,10 @@ impl App {
             false => None,
         };
 
-        let startup = Startup::init()?;
+        let is_admin = is_running_as_admin()?;
+        debug!("is_admin {is_admin}");
+
+        let startup = Startup::init(is_admin)?;
 
         let mut app = App {
             hwnd,

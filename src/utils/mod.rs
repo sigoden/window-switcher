@@ -1,7 +1,7 @@
 mod admin;
 mod check_error;
 mod regedit;
-mod schedule_task;
+mod scheduled_task;
 mod single_instance;
 mod window;
 mod windows_icon;
@@ -9,7 +9,7 @@ mod windows_icon;
 pub use admin::*;
 pub use check_error::*;
 pub use regedit::*;
-pub use schedule_task::*;
+pub use scheduled_task::*;
 pub use single_instance::*;
 pub use window::*;
 pub use windows_icon::get_module_icon_ex;

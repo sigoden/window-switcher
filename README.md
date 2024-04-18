@@ -16,7 +16,7 @@ Tips: **Hold `Alt` and strike `Backtick/Tab` to cycle through, press `Alt + Back
 
  Download `windows-switcher.zip` from the [Github Release](https://github.com/sigoden/windows-switcher/releases), extract `window-switcher.exe`, run it. 
 
-> window-switcher.exe is a portable single-file program (less than 500 KB in size). No installation is required.
+> window-switcher.exe is a portable single-file program (less than 1 MB in size). No installation is required.
 
 
 ## Configuration
@@ -59,7 +59,7 @@ ignore_minimal = no
 
 While not mandatory, running `window-switcher.exe` with administrator privileges unlocks its full potential, especially when working with system applications like Task Manager that require elevated permissions. This allows for smoother interactions with all types of applications.
 
-**Administrator Privileges and Startup Options:**
+**Administrator Privileges and Startup Option:**
 
 * **Running as Admin + Enabling Startup:** Launches `window-switcher.exe` with administrator privileges every time you start your computer.
 * **Running without Admin + Enabling Startup:** Launches `window-switcher.exe` with regular user privileges at startup.

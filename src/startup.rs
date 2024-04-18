@@ -1,7 +1,9 @@
 use anyhow::Result;
 use windows::core::{w, PCWSTR};
 
-use crate::utils::{get_exe_path, RegKey, ScheduleTask};
+use crate::utils::{
+    create_scheduled_task, delete_scheduled_task, exist_scheduled_task, get_exe_path, RegKey,
+};
 
 const TASK_NAME: &str = "WindowSwitcher";
 const HKEY_RUN: PCWSTR = w!("Software\\Microsoft\\Windows\\CurrentVersion\\Run");
@@ -9,42 +11,51 @@ const HKEY_NAME: PCWSTR = w!("Window Switcher");
 
 #[derive(Default)]
 pub struct Startup {
+    pub is_admin: bool,
     pub is_enable: bool,
-    pub task: Option<ScheduleTask>,
     pub exe_path: Vec<u16>,
 }
 
 impl Startup {
     pub fn init(is_admin: bool) -> Result<Self> {
         let exe_path = get_exe_path();
-        let (task, is_enable) = if is_admin {
-            let exe_path_str = String::from_utf16_lossy(&exe_path);
-            let task = ScheduleTask::new(TASK_NAME, &exe_path_str);
-            let is_enable = task.exist()?;
-            (Some(task), is_enable)
+        let is_enable = if is_admin {
+            exist_scheduled_task(TASK_NAME)?
         } else {
-            (None, reg_is_enable(&exe_path)?)
+            reg_is_enable(&exe_path)?
         };
         Ok(Self {
+            is_admin,
             is_enable,
             exe_path,
-            task,
         })
     }
 
     pub fn toggle(&mut self) -> Result<()> {
-        if self.is_enable {
-            match &self.task {
-                Some(task) => task.delete()?,
-                None => reg_disable()?,
+        match (self.is_admin, self.is_enable) {
+            (true, true) => {
+                delete_scheduled_task(TASK_NAME)?;
+                self.is_enable = false;
             }
-            self.is_enable = false;
-        } else {
-            match &self.task {
-                Some(task) => task.create()?,
-                None => reg_enable(&self.exe_path)?,
-            };
-            self.is_enable = true;
+            (true, false) => {
+                if reg_is_enable(&self.exe_path)? {
+                    reg_disable()?;
+                }
+                create_scheduled_task(TASK_NAME, &String::from_utf16_lossy(&self.exe_path))?;
+                self.is_enable = true;
+            }
+            (false, true) => {
+                reg_disable()?;
+                self.is_enable = false;
+            }
+            (false, false) => {
+                if exist_scheduled_task(TASK_NAME)? {
+                    alert!("To avoid conflicts, please disable 'Startup' feature within Window-Switcher while running it as an administrator. Once disabled, you can safely enable 'Startup' again under normal user permissions.");
+                    return Ok(());
+                }
+                reg_enable(&self.exe_path)?;
+                self.is_enable = true;
+            }
         }
         Ok(())
     }

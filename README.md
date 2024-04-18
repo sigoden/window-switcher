@@ -10,14 +10,18 @@ Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 
 ![switch-apps](https://github.com/sigoden/window-switcher/assets/4012553/0c74a7ca-3a48-4458-8d2d-b40dc041f067)
 
-Tips: **Hold `Alt` and strike `Backtick/Tab` to cycle through, press `Alt + Backtick/Tab` to switch to the previous one.**
+Tips: **Hold down the `Alt` key and tap the `Backtick/Tab` to cycle through windows/apps, or simply press `Alt + Backtick/Tab` to switch to the previous window/app.**
 
-## Install
+## Installation
 
- Download `windows-switcher.zip` from the [Github Release](https://github.com/sigoden/windows-switcher/releases), extract `window-switcher.exe`, run it. 
+1. **Download:** Visit the [Github Release](https://thub.com/sigoden/windows-switcher/releases) and download the `windows-switcher.zip` file.
+2. **Extract:** Unzip the downloaded file and extract the `window-switcher.exe` to your preferred location.
+3. **Launch:** No installation required! Just double-click on `window-switcher.exe` to start using it.
 
-> window-switcher.exe is a portable single-file program (less than 1 MB in size). No installation is required.
-
+For the tech-savvy, here's a one-liner to automate the installation:
+```ps1
+iwr -useb https://raw.githubusercontent.com/sigoden/window-switcher/blob/main/install.ps1 | iex
+```
 
 ## Configuration
 

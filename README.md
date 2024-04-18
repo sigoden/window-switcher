@@ -20,7 +20,7 @@ Tips: **Hold down the `Alt` key and tap the `Backtick/Tab` to cycle through wind
 
 For the tech-savvy, here's a one-liner to automate the installation:
 ```ps1
-iwr -useb https://raw.githubusercontent.com/sigoden/window-switcher/blob/main/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/sigoden/window-switcher/main/install.ps1 | iex
 ```
 
 ## Configuration

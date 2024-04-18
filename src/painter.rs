@@ -76,10 +76,10 @@ impl GdiAAPainter {
             self.height = height;
             self.size = size;
 
-            DeleteDC(self.mem_hdc);
-            DeleteObject(self.mem_map);
-            DeleteDC(self.scaled_hdc);
-            DeleteObject(self.scaled_map);
+            let _ = DeleteDC(self.mem_hdc);
+            let _ = DeleteObject(self.mem_map);
+            let _ = DeleteDC(self.scaled_hdc);
+            let _ = DeleteObject(self.scaled_map);
 
             let hdc = GetDC(self.hwnd);
             let mem_dc = CreateCompatibleDC(hdc);
@@ -120,7 +120,7 @@ impl GdiAAPainter {
         self.paint0(state);
         unsafe {
             SetStretchBltMode(self.mem_hdc, HALFTONE);
-            StretchBlt(
+            let _ = StretchBlt(
                 self.mem_hdc,
                 0,
                 0,
@@ -151,7 +151,7 @@ impl GdiAAPainter {
                 0,
                 SRCCOPY,
             );
-            EndPaint(self.hwnd, &ps);
+            let _ = EndPaint(self.hwnd, &ps);
         }
     }
 

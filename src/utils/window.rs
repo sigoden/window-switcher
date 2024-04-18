@@ -122,7 +122,7 @@ pub fn get_window_exe(hwnd: HWND) -> Option<String> {
 pub fn set_foreground_window(hwnd: HWND) {
     unsafe {
         if is_iconic_window(hwnd) {
-            ShowWindow(hwnd, SW_RESTORE);
+            let _ = ShowWindow(hwnd, SW_RESTORE);
         }
         if hwnd == get_foreground_window() {
             return;
@@ -132,7 +132,7 @@ pub fn set_foreground_window(hwnd: HWND) {
             let hwnd_console = GetConsoleWindow();
             let _ = SetWindowPos(hwnd_console, None, 0, 0, 0, 0, SWP_NOZORDER);
             let _ = FreeConsole();
-            SetForegroundWindow(hwnd);
+            let _ = SetForegroundWindow(hwnd);
         }
     };
 }

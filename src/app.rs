@@ -114,7 +114,7 @@ impl App {
                 }
                 0 => break,
                 _ => unsafe {
-                    TranslateMessage(&message);
+                    let _ = TranslateMessage(&message);
                     DispatchMessageW(&message);
                 },
             }
@@ -226,8 +226,9 @@ impl App {
                 } else if hotkey_id == app.config.switch_apps_hotkey.id {
                     app.switch_apps(reverse)?;
                     unsafe {
-                        RedrawWindow(hwnd, None, HRGN::default(), RDW_ERASE | RDW_INVALIDATE)
-                    };
+                        let _ =
+                            RedrawWindow(hwnd, None, HRGN::default(), RDW_ERASE | RDW_INVALIDATE);
+                    }
                     if let Some(state) = &app.switch_apps_state {
                         app.painter.paint(state);
                     }
@@ -416,7 +417,7 @@ impl App {
             let _ = GetCursorPos(&mut cursor);
 
             let hmonitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
-            GetMonitorInfoW(hmonitor, &mut mi);
+            let _ = GetMonitorInfoW(hmonitor, &mut mi);
         }
 
         let monitor_rect = mi.rcMonitor;
@@ -498,7 +499,9 @@ impl App {
             for (hicon, _) in state.apps {
                 let _ = unsafe { DestroyIcon(hicon) };
             }
-            unsafe { ShowWindow(hwnd, SW_HIDE) };
+            unsafe {
+                let _ = ShowWindow(hwnd, SW_HIDE);
+            }
         }
     }
 }

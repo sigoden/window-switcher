@@ -6,12 +6,7 @@ use std::{
     path::Path,
 };
 
-use ini::Ini;
-use window_switcher::{
-    alert, start,
-    utils::{get_exe_folder, SingleInstance},
-    Config,
-};
+use window_switcher::{alert, load_config, start, utils::SingleInstance};
 
 fn main() {
     if let Err(err) = run() {
@@ -36,14 +31,6 @@ fn run() -> Result<()> {
         bail!("Another instance is running. This instance will abort.")
     }
     start(&config)
-}
-
-fn load_config() -> Result<Config> {
-    let folder = get_exe_folder()?;
-    let ini_file = folder.join("window-switcher.ini");
-    let conf =
-        Ini::load_from_file(ini_file).map_err(|err| anyhow!("Failed to load ini file, {err}"))?;
-    Config::load(&conf)
 }
 
 fn prepare_log_file(path: &Path) -> std::io::Result<File> {

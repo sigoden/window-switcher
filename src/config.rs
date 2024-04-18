@@ -1,4 +1,4 @@
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::HashSet, fs, path::PathBuf, process::Command};
 
 use anyhow::{anyhow, Result};
 use ini::Ini;
@@ -12,7 +12,9 @@ use crate::utils::get_exe_folder;
 pub const SWITCH_WINDOWS_HOTKEY_ID: u32 = 1;
 pub const SWITCH_APPS_HOTKEY_ID: u32 = 2;
 
-#[derive(Debug, Clone)]
+const DEFAULT_CONFIG: &str = include_str!("../window-switcher.ini");
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub trayicon: bool,
     pub log_level: LevelFilter,
@@ -253,6 +255,45 @@ impl Hotkey {
         };
         Some((modifier, code))
     }
+}
+
+pub fn load_config() -> Result<Config> {
+    let filepath = get_config_path()?;
+    let conf = Ini::load_from_file(&filepath)
+        .map_err(|err| anyhow!("Failed to load config file '{}', {err}", filepath.display()))?;
+    Config::load(&conf)
+}
+
+pub(crate) fn edit_config_file() -> Result<bool> {
+    let filepath = get_config_path()?;
+    debug!("open config file '{}'", filepath.display());
+    if !filepath.exists() {
+        fs::write(&filepath, DEFAULT_CONFIG).map_err(|err| {
+            anyhow!(
+                "Failed to write config file '{}', {err}",
+                filepath.display()
+            )
+        })?;
+    }
+    let exit = Command::new("notepad.exe")
+        .arg(&filepath)
+        .spawn()
+        .map_err(|err| anyhow!("Failed to open config file '{}', {err}", filepath.display()))?
+        .wait()
+        .map_err(|err| {
+            anyhow!(
+                "Failed to close config file '{}', {err}",
+                filepath.display()
+            )
+        })?;
+
+    Ok(exit.success())
+}
+
+fn get_config_path() -> Result<PathBuf> {
+    let folder = get_exe_folder()?;
+    let config_path = folder.join("window-switcher.ini");
+    Ok(config_path)
 }
 
 #[cfg(test)]

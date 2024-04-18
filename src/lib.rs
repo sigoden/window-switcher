@@ -13,4 +13,4 @@ mod startup;
 mod trayicon;
 
 pub use crate::app::start;
-pub use crate::config::Config;
+pub use crate::config::{load_config, Config};

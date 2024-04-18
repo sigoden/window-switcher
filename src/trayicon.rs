@@ -1,4 +1,4 @@
-use crate::app::{IDM_EXIT, IDM_STARTUP, NAME, WM_USER_TRAYICON};
+use crate::app::{IDM_CONFIGURE, IDM_EXIT, IDM_STARTUP, NAME, WM_USER_TRAYICON};
 
 use anyhow::{anyhow, Result};
 use windows::core::w;
@@ -14,6 +14,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 const ICON_BYTES: &[u8] = include_bytes!("../assets/icon.ico");
+const TEXT_CONFIGURE: PCWSTR = w!("Configure");
 const TEXT_STARTUP: PCWSTR = w!("Startup");
 const TEXT_EXIT: PCWSTR = w!("Exit");
 
@@ -87,6 +88,7 @@ impl TrayIcon {
         let startup_flags = if startup { MF_CHECKED } else { MF_UNCHECKED };
         unsafe {
             let hmenu = CreatePopupMenu().map_err(|err| anyhow!("Failed to create menu, {err}"))?;
+            AppendMenuW(hmenu, MF_STRING, IDM_CONFIGURE as usize, TEXT_CONFIGURE)?;
             AppendMenuW(hmenu, startup_flags, IDM_STARTUP as usize, TEXT_STARTUP)?;
             AppendMenuW(hmenu, MF_STRING, IDM_EXIT as usize, TEXT_EXIT)?;
             Ok(hmenu)

@@ -21,9 +21,9 @@ Tips: **Hold `Alt` and strike `Backtick/Tab` to cycle through, press `Alt + Back
 
 ## Configuration
 
-The window-switcher supports custom shortcuts, enabling and disabling certain functions, and all of these can be set through the configuration file.
+Window-Switcher offers various customization options to tailor its behavior to your preferences. You can define custom keyboard shortcuts, enable or disable specific features, and fine-tune settings through a configuration file.
 
-The configuration file must be named `window-switcher.ini` and located in the same directory as `window-switcher.exe` for the changes to take effect.  
+To personalize Window-Switcher, you'll need a configuration file named `window-switcher.ini`. This file should be placed in the same directory as the `window-switcher.exe` file. Once you've made changes to the configuration, make sure to restart Window-Switcher so your new settings can take effect.
 
 Here is the default configuration:
 

@@ -1,4 +1,4 @@
-use crate::config::Config;
+use crate::config::{open_config_file, Config};
 use crate::foreground::ForegroundWatcher;
 use crate::keyboard::KeyboardListener;
 use crate::startup::Startup;
@@ -40,6 +40,7 @@ pub const WM_USER_MODIFIER_KEYUP: u32 = 6001;
 pub const WM_USER_HOOTKEY: u32 = 6002;
 pub const IDM_EXIT: u32 = 1;
 pub const IDM_STARTUP: u32 = 2;
+pub const IDM_CONFIGURE: u32 = 3;
 
 pub fn start(config: &Config) -> Result<()> {
     info!("start config={:?}", config);
@@ -253,6 +254,11 @@ impl App {
                         IDM_STARTUP => {
                             let app = get_app(hwnd)?;
                             app.startup.toggle()?;
+                        }
+                        IDM_CONFIGURE => {
+                            if let Err(err) = open_config_file() {
+                                alert!("{err}");
+                            }
                         }
                         _ => {}
                     }

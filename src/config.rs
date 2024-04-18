@@ -280,12 +280,17 @@ pub(crate) fn open_config_file() -> Result<()> {
         .spawn()
         .map_err(|err| anyhow!("Failed to open config file '{}', {err}", filepath.display()))?
         .wait()
-        .map_err(|err| anyhow!("Failed to close config file '{}', {err}", filepath.display()))?;
+        .map_err(|err| {
+            anyhow!(
+                "Failed to close config file '{}', {err}",
+                filepath.display()
+            )
+        })?;
 
     if exit.success() {
         // restart
     }
-        
+
     Ok(())
 }
 

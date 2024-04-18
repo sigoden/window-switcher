@@ -1,4 +1,4 @@
-use crate::app::{IDM_EXIT, IDM_STARTUP, IDM_CONFIGURE, NAME, WM_USER_TRAYICON};
+use crate::app::{IDM_CONFIGURE, IDM_EXIT, IDM_STARTUP, NAME, WM_USER_TRAYICON};
 
 use anyhow::{anyhow, Result};
 use windows::core::w;

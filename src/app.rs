@@ -1,4 +1,4 @@
-use crate::config::{open_config_file, Config};
+use crate::config::{edit_config_file, Config};
 use crate::foreground::ForegroundWatcher;
 use crate::keyboard::KeyboardListener;
 use crate::startup::Startup;
@@ -256,7 +256,7 @@ impl App {
                             app.startup.toggle()?;
                         }
                         IDM_CONFIGURE => {
-                            if let Err(err) = open_config_file() {
+                            if let Err(err) = edit_config_file() {
                                 alert!("{err}");
                             }
                         }
@@ -280,7 +280,7 @@ impl App {
         Ok(unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) })
     }
 
-    pub fn switch_windows(&mut self, hwnd: HWND, reverse: bool) -> Result<bool> {
+    fn switch_windows(&mut self, hwnd: HWND, reverse: bool) -> Result<bool> {
         let windows = list_windows(self.config.switch_windows_ignore_minimal)?;
         debug!(
             "switch windows: hwnd:{hwnd:?} reverse:{reverse} state:{:?}",

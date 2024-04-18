@@ -14,7 +14,7 @@ pub const SWITCH_APPS_HOTKEY_ID: u32 = 2;
 
 const DEFAULT_CONFIG: &str = include_str!("../window-switcher.ini");
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub trayicon: bool,
     pub log_level: LevelFilter,
@@ -264,7 +264,7 @@ pub fn load_config() -> Result<Config> {
     Config::load(&conf)
 }
 
-pub(crate) fn open_config_file() -> Result<()> {
+pub(crate) fn edit_config_file() -> Result<bool> {
     let filepath = get_config_path()?;
     debug!("open config file '{}'", filepath.display());
     if !filepath.exists() {
@@ -287,11 +287,7 @@ pub(crate) fn open_config_file() -> Result<()> {
             )
         })?;
 
-    if exit.success() {
-        // restart
-    }
-
-    Ok(())
+    Ok(exit.success())
 }
 
 fn get_config_path() -> Result<PathBuf> {

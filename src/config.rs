@@ -84,7 +84,7 @@ impl Config {
 
             if let Some(v) = section
                 .get("blacklist")
-                .map(|v| v.split(',').map(|v| v.trim().to_lowercase()).collect())
+                .map(|v| v.split(',').map(|v| v.trim().to_string()).collect())
             {
                 conf.switch_windows_blacklist = v;
             }

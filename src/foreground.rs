@@ -25,7 +25,7 @@ impl ForegroundWatcher {
             });
         }
 
-        let _ = BLACKLIST.set(blacklist.clone());
+        let _ = BLACKLIST.set(blacklist.iter().map(|v| v.to_lowercase()).collect());
 
         let hook = unsafe {
             SetWinEventHook(
@@ -69,7 +69,7 @@ unsafe extern "system" fn win_event_proc(
     _dwms_event_time: u32,
 ) {
     let exe = match get_window_exe(hwnd) {
-        Some(v) => v,
+        Some(v) => v.to_lowercase(),
         None => return,
     };
     IS_FOREGROUND_IN_BLACKLIST = BLACKLIST.get().unwrap().contains(&exe);

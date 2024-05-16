@@ -251,6 +251,18 @@ impl Hotkey {
             "}" | "]" | "vk_oem_6" => 0xdd,
             "\"" | "'" | "vk_oem_7" => 0xde,
             "§" | "!" | "vk_oem_8" => 0xdf,
+            "vk_oem_102" => 0xe2,
+            "vk_processkey" => 0xe5,
+            "vk_packet" => 0xe7,
+            "vk_attn" => 0xf6,
+            "vk_crsel" => 0xf7,
+            "vk_exsel" => 0xf8,
+            "vk_ereof" => 0xf9,
+            "vk_play" => 0xfa,
+            "vk_zoom" => 0xfb,
+            "vk_noname" => 0xfc,
+            "vk_pa1" => 0xfd,
+            "vk_oem_clear" => 0xfe,
             _ => return None,
         };
         Some((modifier, code))

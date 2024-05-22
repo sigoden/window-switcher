@@ -14,7 +14,7 @@ Tips: **Hold down the `Alt` key and tap the `Backtick/Tab` to cycle through wind
 
 ## Installation
 
-1. **Download:** Visit the [Github Release](https://thub.com/sigoden/windows-switcher/releases) and download the `windows-switcher.zip` file.
+1. **Download:** Visit the [Github Release](https://github.com/sigoden/windows-switcher/releases) and download the `windows-switcher.zip` file.
 2. **Extract:** Unzip the downloaded file and extract the `window-switcher.exe` to your preferred location.
 3. **Launch:** No installation required! Just double-click on `window-switcher.exe` to start using it.
 

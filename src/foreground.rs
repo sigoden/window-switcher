@@ -50,7 +50,7 @@ impl ForegroundWatcher {
 
 impl Drop for ForegroundWatcher {
     fn drop(&mut self) {
-        debug!("foreground watcher destoryed");
+        debug!("foreground watcher destroyed");
         if !self.hook.is_invalid() {
             unsafe {
                 let _ = UnhookWinEvent(self.hook);

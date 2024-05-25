@@ -1,9 +1,11 @@
 use crate::app::{IDM_CONFIGURE, IDM_EXIT, IDM_STARTUP, NAME, WM_USER_TRAYICON};
+use std::thread::sleep;
+use std::time::Duration;
 
 use anyhow::{anyhow, Result};
 use windows::core::w;
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::{HWND, POINT};
+use windows::Win32::Foundation::{GetLastError, E_FAIL, HWND, POINT};
 use windows::Win32::UI::Shell::{
     Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
 };
@@ -30,9 +32,23 @@ impl TrayIcon {
 
     pub fn register(&mut self, hwnd: HWND) -> Result<()> {
         self.data.hWnd = hwnd;
-        unsafe { Shell_NotifyIconW(NIM_ADD, &self.data) }
-            .ok()
-            .map_err(|e| anyhow!("Fail to add trayicon, {}", e))
+        unsafe {
+            let result = Shell_NotifyIconW(NIM_ADD, &self.data);
+            if !result.as_bool() {
+                let err = GetLastError();
+                // fix issue #111
+                if err.0 as i32 == E_FAIL.0 {
+                    sleep(Duration::from_secs(2));
+                    Shell_NotifyIconW(NIM_ADD, &self.data)
+                } else {
+                    result
+                }
+            } else {
+                result
+            }
+        }
+        .ok()
+        .map_err(|e| anyhow!("Fail to add trayicon, {}", e))
     }
 
     pub fn show(&mut self, startup: bool) -> Result<()> {

@@ -12,7 +12,6 @@ use crate::utils::{
 use crate::painter::{GdiAAPainter, ICON_BORDER_SIZE, WINDOW_BORDER_SIZE};
 use anyhow::{anyhow, Result};
 use indexmap::IndexSet;
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use windows::core::w;
 use windows::core::PCWSTR;
@@ -27,17 +26,18 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, GetCursorPos, GetMessageW,
-    GetWindowLongPtrW, LoadCursorW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
-    SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow, TranslateMessage, CS_HREDRAW,
-    CS_VREDRAW, CW_USEDEFAULT, GWL_STYLE, HICON, HWND_TOPMOST, IDC_ARROW, MSG, SWP_SHOWWINDOW,
-    SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP, WM_PAINT, WM_RBUTTONUP,
-    WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
+    GetWindowLongPtrW, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW,
+    RegisterWindowMessageW, SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow,
+    TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_STYLE, HICON, HWND_TOPMOST,
+    IDC_ARROW, MSG, SWP_SHOWWINDOW, SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP,
+    WM_PAINT, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
 };
 
 pub const NAME: PCWSTR = w!("Window Switcher");
 pub const WM_USER_TRAYICON: u32 = 6000;
 pub const WM_USER_MODIFIER_KEYUP: u32 = 6001;
 pub const WM_USER_HOOTKEY: u32 = 6002;
+pub const WM_USER_REGISTER_TRAYICON: u32 = 6003;
 pub const IDM_EXIT: u32 = 1;
 pub const IDM_STARTUP: u32 = 2;
 pub const IDM_CONFIGURE: u32 = 3;
@@ -47,10 +47,8 @@ pub fn start(config: &Config) -> Result<()> {
     App::start(config)
 }
 
-/// When the taskbar is created, it registers a message with the "TaskbarCreated" string and then broadcasts this message to all top-level windows
-/// When the application receives this message, it should assume that any taskbar icons it added have been removed and add them again.
-static S_U_TASKBAR_RESTART: Lazy<u32> =
-    Lazy::new(|| unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) });
+/// Listen to this message to recreate the tray icon since the taskbar has been recreated.
+static mut WM_TASKBARCREATED: u32 = 0;
 
 pub struct App {
     hwnd: HWND,
@@ -95,7 +93,7 @@ impl App {
             painter,
         };
 
-        app.set_trayicon()?;
+        app.set_trayicon();
 
         let app_ptr = Box::into_raw(Box::new(app)) as _;
         check_error(|| set_window_user_data(hwnd, app_ptr))
@@ -124,6 +122,8 @@ impl App {
     }
 
     fn create_window() -> Result<HWND> {
+        unsafe { WM_TASKBARCREATED = RegisterWindowMessageW(w!("TaskbarCreated")) };
+
         let hinstance = unsafe { GetModuleHandleW(None) }
             .map_err(|err| anyhow!("Failed to get current module handle, {err}"))?;
 
@@ -166,11 +166,24 @@ impl App {
         Ok(hwnd)
     }
 
-    fn set_trayicon(&mut self) -> Result<()> {
+    fn set_trayicon(&mut self) {
         if let Some(trayicon) = self.trayicon.as_mut() {
-            trayicon.register(self.hwnd)?;
+            match trayicon.register(self.hwnd) {
+                Ok(()) => info!("trayicon registered"),
+                Err(err) => {
+                    if !trayicon.exist() {
+                        error!("{err}, retrying in 3 second");
+                        let hwnd = self.hwnd;
+                        std::thread::spawn(move || {
+                            std::thread::sleep(std::time::Duration::from_secs(3));
+                            let _ = unsafe {
+                                PostMessageW(hwnd, WM_USER_REGISTER_TRAYICON, WPARAM(0), LPARAM(0))
+                            };
+                        });
+                    }
+                }
+            }
         }
-        Ok(())
     }
 
     unsafe extern "system" fn window_proc(
@@ -272,9 +285,9 @@ impl App {
                 let app = get_app(hwnd)?;
                 app.paint()?;
             }
-            _ if msg == *S_U_TASKBAR_RESTART => {
+            _ if msg == WM_USER_REGISTER_TRAYICON || unsafe { msg == WM_TASKBARCREATED } => {
                 let app = get_app(hwnd)?;
-                app.set_trayicon()?;
+                app.set_trayicon();
             }
             _ => {}
         }

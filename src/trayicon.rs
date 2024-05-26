@@ -5,7 +5,8 @@ use windows::core::w;
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{HWND, POINT};
 use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW,
+    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+    NOTIFYICONDATAW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     AppendMenuW, CreateIconFromResourceEx, CreatePopupMenu, GetCursorPos,
@@ -33,6 +34,10 @@ impl TrayIcon {
         unsafe { Shell_NotifyIconW(NIM_ADD, &self.data) }
             .ok()
             .map_err(|e| anyhow!("Fail to add trayicon, {}", e))
+    }
+
+    pub fn exist(&mut self) -> bool {
+        unsafe { Shell_NotifyIconW(NIM_MODIFY, &self.data) }.as_bool()
     }
 
     pub fn show(&mut self, startup: bool) -> Result<()> {

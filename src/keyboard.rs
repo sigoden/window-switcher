@@ -1,24 +1,27 @@
 use crate::{
-    app::{WM_USER_HOOTKEY, WM_USER_MODIFIER_KEYUP},
-    config::{Hotkey, SWITCH_WINDOWS_HOTKEY_ID},
+    app::{
+        WM_USER_SWITCH_APPS, WM_USER_SWITCH_APPS_CANCEL, WM_USER_SWITCH_APPS_DONE,
+        WM_USER_SWITCH_WINDOWS, WM_USER_SWITCH_WINDOWS_DONE,
+    },
+    config::{Hotkey, SWITCH_APPS_HOTKEY_ID, SWITCH_WINDOWS_HOTKEY_ID},
     foreground::IS_FOREGROUND_IN_BLACKLIST,
 };
 
 use anyhow::{anyhow, Result};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::VIRTUAL_KEY;
-use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, SendMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK, KBDLLHOOKSTRUCT,
-    WH_KEYBOARD_LL,
-};
-use windows::Win32::{
-    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-    UI::Input::KeyboardAndMouse::{VK_LSHIFT, VK_RSHIFT},
+use windows::Win32::UI::{
+    Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_ESCAPE, VK_LSHIFT, VK_RSHIFT},
+    WindowsAndMessaging::{
+        CallNextHookEx, SendMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
+        KBDLLHOOKSTRUCT, WH_KEYBOARD_LL,
+    },
 };
 
 static mut KEYBOARD_STATE: Vec<HotKeyState> = vec![];
 static mut WINDOW: HWND = HWND(0);
 static mut IS_SHIFT_PRESSED: bool = false;
+static mut PREVIOUS_KEYCODE: u16 = 0;
 
 #[derive(Debug)]
 pub struct KeyboardListener {
@@ -80,26 +83,45 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
                 state.is_modifier_pressed = true;
             } else {
                 state.is_modifier_pressed = false;
-                unsafe {
-                    SendMessageW(
-                        WINDOW,
-                        WM_USER_MODIFIER_KEYUP,
-                        WPARAM(state.hotkey.get_modifier() as _),
-                        LPARAM(0),
-                    )
-                };
+                if PREVIOUS_KEYCODE == state.hotkey.code {
+                    let id = state.hotkey.id;
+                    if id == SWITCH_APPS_HOTKEY_ID {
+                        unsafe {
+                            SendMessageW(WINDOW, WM_USER_SWITCH_APPS_DONE, WPARAM(0), LPARAM(0))
+                        };
+                    } else if id == SWITCH_WINDOWS_HOTKEY_ID {
+                        unsafe {
+                            SendMessageW(WINDOW, WM_USER_SWITCH_WINDOWS_DONE, WPARAM(0), LPARAM(0))
+                        };
+                    }
+                }
             }
         }
     }
     if !is_modifier {
         for state in KEYBOARD_STATE.iter_mut() {
-            if vk_code.0 == state.hotkey.code && is_key_pressed() && state.is_modifier_pressed {
+            if is_key_pressed() && state.is_modifier_pressed {
                 let id = state.hotkey.id;
-                if id != SWITCH_WINDOWS_HOTKEY_ID || !IS_FOREGROUND_IN_BLACKLIST {
+                if vk_code.0 == state.hotkey.code {
                     let reverse = if IS_SHIFT_PRESSED { 1 } else { 0 };
+                    if id == SWITCH_APPS_HOTKEY_ID {
+                        unsafe {
+                            SendMessageW(WINDOW, WM_USER_SWITCH_APPS, WPARAM(0), LPARAM(reverse))
+                        };
+                        PREVIOUS_KEYCODE = vk_code.0;
+                        return LRESULT(1);
+                    } else if id == SWITCH_WINDOWS_HOTKEY_ID && !IS_FOREGROUND_IN_BLACKLIST {
+                        unsafe {
+                            SendMessageW(WINDOW, WM_USER_SWITCH_WINDOWS, WPARAM(0), LPARAM(reverse))
+                        };
+                        PREVIOUS_KEYCODE = vk_code.0;
+                        return LRESULT(1);
+                    }
+                } else if vk_code == VK_ESCAPE && id == SWITCH_APPS_HOTKEY_ID {
                     unsafe {
-                        SendMessageW(WINDOW, WM_USER_HOOTKEY, WPARAM(id as _), LPARAM(reverse))
+                        SendMessageW(WINDOW, WM_USER_SWITCH_APPS_CANCEL, WPARAM(0), LPARAM(0))
                     };
+                    PREVIOUS_KEYCODE = vk_code.0;
                     return LRESULT(1);
                 }
             }

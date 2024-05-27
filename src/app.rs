@@ -35,9 +35,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
 
 pub const NAME: PCWSTR = w!("Window Switcher");
 pub const WM_USER_TRAYICON: u32 = 6000;
-pub const WM_USER_MODIFIER_KEYUP: u32 = 6001;
-pub const WM_USER_HOOTKEY: u32 = 6002;
-pub const WM_USER_REGISTER_TRAYICON: u32 = 6003;
+pub const WM_USER_REGISTER_TRAYICON: u32 = 6001;
+pub const WM_USER_SWITCH_APPS: u32 = 6010;
+pub const WM_USER_SWITCH_APPS_DONE: u32 = 6011;
+pub const WM_USER_SWITCH_APPS_CANCEL: u32 = 6012;
+pub const WM_USER_SWITCH_WINDOWS: u32 = 6020;
+pub const WM_USER_SWITCH_WINDOWS_DONE: u32 = 6021;
 pub const IDM_EXIT: u32 = 1;
 pub const IDM_STARTUP: u32 = 2;
 pub const IDM_CONFIGURE: u32 = 3;
@@ -213,39 +216,43 @@ impl App {
                 }
                 return Ok(LRESULT(0));
             }
-            WM_USER_MODIFIER_KEYUP => {
-                debug!("message WM_USER_MODIFIER_KEYUP {}", wparam.0);
-                let app = get_app(hwnd)?;
-                let modifier = wparam.0 as u16;
-                if modifier == app.config.switch_windows_hotkey.get_modifier() {
-                    app.switch_windows_state.modifier_released = true;
-                }
-                if modifier == app.config.switch_apps_hotkey.get_modifier() {
-                    app.do_switch_app();
-                }
-            }
-            WM_USER_HOOTKEY => {
-                debug!("message WM_USER_HOOTKEY {}", wparam.0);
+            WM_USER_SWITCH_APPS => {
+                debug!("message WM_USER_SWITCH_APPS");
                 let app = get_app(hwnd)?;
                 let reverse = lparam.0 == 1;
-                let hotkey_id = wparam.0 as u32;
-                if hotkey_id == app.config.switch_windows_hotkey.id {
-                    let hwnd = app
-                        .switch_apps_state
-                        .as_ref()
-                        .and_then(|state| state.apps.get(state.index).map(|(_, id)| *id))
-                        .unwrap_or_else(get_foreground_window);
-                    app.switch_windows(hwnd, reverse)?;
-                } else if hotkey_id == app.config.switch_apps_hotkey.id {
-                    app.switch_apps(reverse)?;
-                    unsafe {
-                        let _ =
-                            RedrawWindow(hwnd, None, HRGN::default(), RDW_ERASE | RDW_INVALIDATE);
-                    }
-                    if let Some(state) = &app.switch_apps_state {
-                        app.painter.paint(state);
-                    }
+                app.switch_apps(reverse)?;
+                unsafe {
+                    let _ = RedrawWindow(hwnd, None, HRGN::default(), RDW_ERASE | RDW_INVALIDATE);
                 }
+                if let Some(state) = &app.switch_apps_state {
+                    app.painter.paint(state);
+                }
+            }
+            WM_USER_SWITCH_APPS_DONE => {
+                debug!("message WM_USER_SWITCH_APPS_DONE");
+                let app = get_app(hwnd)?;
+                app.do_switch_app();
+            }
+            WM_USER_SWITCH_APPS_CANCEL => {
+                debug!("message WM_USER_SWITCH_APPS_CANCEL");
+                let app = get_app(hwnd)?;
+                app.cancel_switch_app();
+            }
+            WM_USER_SWITCH_WINDOWS => {
+                debug!("message WM_USER_SWITCH_WINDOWS");
+                let app = get_app(hwnd)?;
+                let reverse = lparam.0 == 1;
+                let hwnd = app
+                    .switch_apps_state
+                    .as_ref()
+                    .and_then(|state| state.apps.get(state.index).map(|(_, id)| *id))
+                    .unwrap_or_else(get_foreground_window);
+                app.switch_windows(hwnd, reverse)?;
+            }
+            WM_USER_SWITCH_WINDOWS_DONE => {
+                debug!("message WM_USER_SWITCH_WINDOWS_DONE");
+                let app = get_app(hwnd)?;
+                app.switch_windows_state.modifier_released = true;
             }
             WM_LBUTTONUP => {
                 let app = get_app(hwnd)?;
@@ -509,6 +516,18 @@ impl App {
             if let Some((_, id)) = state.apps.get(state.index) {
                 set_foreground_window(*id);
             }
+            for (hicon, _) in state.apps {
+                let _ = unsafe { DestroyIcon(hicon) };
+            }
+            unsafe {
+                let _ = ShowWindow(hwnd, SW_HIDE);
+            }
+        }
+    }
+
+    fn cancel_switch_app(&mut self) {
+        let hwnd = self.hwnd;
+        if let Some(state) = self.switch_apps_state.take() {
             for (hicon, _) in state.apps {
                 let _ = unsafe { DestroyIcon(hicon) };
             }

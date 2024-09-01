@@ -1,5 +1,6 @@
 mod admin;
 mod check_error;
+mod handle_wrapper;
 mod regedit;
 mod scheduled_task;
 mod single_instance;
@@ -8,6 +9,7 @@ mod windows_icon;
 
 pub use admin::*;
 pub use check_error::*;
+pub use handle_wrapper::*;
 pub use regedit::*;
 pub use scheduled_task::*;
 pub use single_instance::*;

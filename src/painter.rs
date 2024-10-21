@@ -4,9 +4,9 @@ use anyhow::Result;
 use windows::core::w;
 use windows::Win32::Foundation::{COLORREF, RECT};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC,
-    DeleteObject, EndPaint, FillRect, SelectObject, SetStretchBltMode, StretchBlt, HALFTONE,
-    HBITMAP, HBRUSH, HDC, PAINTSTRUCT, SRCCOPY,
+    BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateRoundRectRgn,
+    CreateSolidBrush, DeleteDC, DeleteObject, EndPaint, FillRgn, SelectObject, SetStretchBltMode,
+    SetWindowRgn, StretchBlt, HALFTONE, HBITMAP, HBRUSH, HDC, HRGN, PAINTSTRUCT, SRCCOPY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{DrawIconEx, DI_NORMAL};
 use windows::Win32::{Foundation::HWND, Graphics::Gdi::GetDC};
@@ -19,7 +19,7 @@ pub const FG_DARK_COLOR: COLORREF = COLORREF(0x4c4c4c);
 pub const BG_LIGHT_COLOR: COLORREF = COLORREF(0xf2f2f2);
 // selected icon box color in light theme
 pub const FG_LIGHT_COLOR: COLORREF = COLORREF(0xe0e0e0);
-// minimum icon size
+// maximum icon size
 pub const ICON_SIZE: i32 = 64;
 // window padding
 pub const WINDOW_BORDER_SIZE: i32 = 10;
@@ -34,17 +34,22 @@ pub struct GdiAAPainter {
     // scaled
     scaled_hdc: HDC,
     scaled_map: HBITMAP,
+    // brush
+    fg_brush: HBRUSH,
+    bg_brush: HBRUSH,
+    // window region
+    window_rgn: HRGN,
     // windows handle
     hwnd: HWND,
     // content size
     width: i32,
     height: i32,
     size: i32,
+    corner_radius: i32,
     // scale
     scale: i32,
-    // color
-    fg_color: COLORREF,
-    bg_color: COLORREF,
+    // theme
+    light_theme: bool,
 }
 
 impl GdiAAPainter {
@@ -59,22 +64,21 @@ impl GdiAAPainter {
                 false
             }
         };
-        let (fg_color, bg_color) = match light_theme {
-            true => (FG_LIGHT_COLOR, BG_LIGHT_COLOR),
-            false => (FG_DARK_COLOR, BG_DARK_COLOR),
-        };
         GdiAAPainter {
             mem_hdc: Default::default(),
             mem_map: Default::default(),
             scaled_hdc: Default::default(),
             scaled_map: Default::default(),
+            fg_brush: Default::default(),
+            bg_brush: Default::default(),
+            window_rgn: Default::default(),
             hwnd,
             width: 0,
             height: 0,
             size: 0,
+            corner_radius: 0,
             scale,
-            fg_color,
-            bg_color,
+            light_theme,
         }
     }
 
@@ -103,20 +107,23 @@ impl GdiAAPainter {
             let _ = DeleteObject(self.mem_map);
             let _ = DeleteDC(self.scaled_hdc);
             let _ = DeleteObject(self.scaled_map);
+            let _ = DeleteObject(self.fg_brush);
+            let _ = DeleteObject(self.bg_brush);
+            let _ = DeleteObject(self.window_rgn);
 
             let hdc = GetDC(self.hwnd);
             let mem_dc = CreateCompatibleDC(hdc);
             let mem_map = CreateCompatibleBitmap(hdc, width, height);
             SelectObject(mem_dc, mem_map);
 
-            let brush = CreateSolidBrush(self.fg_color);
-            let rect = RECT {
-                left: 0,
-                top: 0,
-                right: width,
-                bottom: height,
-            };
-            FillRect(mem_dc, &rect as _, brush);
+            let (fg_color, bg_color) = theme_color(self.light_theme);
+            self.fg_brush = CreateSolidBrush(fg_color);
+            self.bg_brush = CreateSolidBrush(bg_color);
+
+            let corner_radius = item_size / 4;
+            let window_rgn = CreateRoundRectRgn(0, 0, width, height, corner_radius, corner_radius);
+            SetWindowRgn(self.hwnd, window_rgn, false);
+            let _ = FillRgn(hdc, window_rgn, self.fg_brush);
 
             let scaled_dc = CreateCompatibleDC(hdc);
             let scaled_map = CreateCompatibleBitmap(hdc, width * self.scale, height * self.scale);
@@ -127,12 +134,15 @@ impl GdiAAPainter {
                 right: width * self.scale,
                 bottom: height * self.scale,
             };
-            FillRect(scaled_dc, &rect as _, brush);
+            draw_round_rect(scaled_dc, &rect, self.fg_brush, corner_radius * self.scale);
 
             self.mem_hdc = mem_dc;
             self.mem_map = mem_map;
             self.scaled_hdc = scaled_dc;
             self.scaled_map = scaled_map;
+
+            self.window_rgn = window_rgn;
+            self.corner_radius = corner_radius;
         }
 
         (icon_size, width, height)
@@ -180,6 +190,8 @@ impl GdiAAPainter {
 
     fn paint0(&mut self, state: &SwitchAppsState) {
         unsafe {
+            let corner_radius = self.corner_radius * self.scale;
+
             // draw background
             let rect = RECT {
                 left: 0,
@@ -187,7 +199,7 @@ impl GdiAAPainter {
                 right: self.width * self.scale,
                 bottom: self.width * self.scale,
             };
-            FillRect(self.scaled_hdc, &rect as _, CreateSolidBrush(self.fg_color));
+            draw_round_rect(self.scaled_hdc, &rect, self.fg_brush, corner_radius);
 
             let cy = (WINDOW_BORDER_SIZE + ICON_BORDER_SIZE) * self.scale;
             let brush_icon = HBRUSH::default();
@@ -206,7 +218,7 @@ impl GdiAAPainter {
                         right,
                         bottom,
                     };
-                    FillRect(self.scaled_hdc, &rect as _, CreateSolidBrush(self.bg_color));
+                    draw_round_rect(self.scaled_hdc, &rect as _, self.bg_brush, corner_radius);
                 }
 
                 let cx = cy + item_size * (i as i32);
@@ -226,6 +238,22 @@ impl GdiAAPainter {
     }
 }
 
+fn draw_round_rect(hdc: HDC, rect: &RECT, brush: HBRUSH, corner_radius: i32) {
+    unsafe {
+        let rgn = CreateRoundRectRgn(
+            rect.left,
+            rect.top,
+            rect.right,
+            rect.bottom,
+            corner_radius,
+            corner_radius,
+        );
+
+        let _ = FillRgn(hdc, rgn, brush);
+        let _ = DeleteObject(rgn);
+    }
+}
+
 fn is_light_theme() -> Result<bool> {
     let reg_key = RegKey::new_hkcu(
         w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
@@ -233,4 +261,11 @@ fn is_light_theme() -> Result<bool> {
     )?;
     let value = reg_key.get_int()?;
     Ok(value == 1)
+}
+
+const fn theme_color(light_theme: bool) -> (COLORREF, COLORREF) {
+    match light_theme {
+        true => (FG_LIGHT_COLOR, BG_LIGHT_COLOR),
+        false => (FG_DARK_COLOR, BG_DARK_COLOR),
+    }
 }

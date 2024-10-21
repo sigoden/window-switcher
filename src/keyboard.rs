@@ -19,7 +19,7 @@ use windows::Win32::UI::{
 };
 
 static mut KEYBOARD_STATE: Vec<HotKeyState> = vec![];
-static mut WINDOW: HWND = HWND(0);
+static mut WINDOW: HWND = HWND(0 as _);
 static mut IS_SHIFT_PRESSED: bool = false;
 static mut PREVIOUS_KEYCODE: u16 = 0;
 

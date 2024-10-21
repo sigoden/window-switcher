@@ -1,4 +1,7 @@
 use crate::app::SwitchAppsState;
+use crate::utils::RegKey;
+use anyhow::Result;
+use windows::core::w;
 use windows::Win32::Foundation::{COLORREF, RECT};
 use windows::Win32::Graphics::Gdi::{
     BeginPaint, BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC,
@@ -8,10 +11,14 @@ use windows::Win32::Graphics::Gdi::{
 use windows::Win32::UI::WindowsAndMessaging::{DrawIconEx, DI_NORMAL};
 use windows::Win32::{Foundation::HWND, Graphics::Gdi::GetDC};
 
-// window background color
-pub const BG_COLOR: COLORREF = COLORREF(0x3b3b3b);
-// selected icon box color
-pub const FG_COLOR: COLORREF = COLORREF(0x4c4c4c);
+// window background color in dark theme
+pub const BG_DARK_COLOR: COLORREF = COLORREF(0x3b3b3b);
+// selected icon box color in dark theme
+pub const FG_DARK_COLOR: COLORREF = COLORREF(0x4c4c4c);
+// window background color in light theme
+pub const BG_LIGHT_COLOR: COLORREF = COLORREF(0xf2f2f2);
+// selected icon box color in light theme
+pub const FG_LIGHT_COLOR: COLORREF = COLORREF(0xe0e0e0);
 // minimum icon size
 pub const ICON_SIZE: i32 = 64;
 // window padding
@@ -35,6 +42,9 @@ pub struct GdiAAPainter {
     size: i32,
     // scale
     scale: i32,
+    // color
+    fg_color: COLORREF,
+    bg_color: COLORREF,
 }
 
 impl GdiAAPainter {
@@ -42,6 +52,17 @@ impl GdiAAPainter {
     ///
     /// The `scale` must be a multiple of 2, for example 2, 4, 6, 8, 12 ...
     pub fn new(hwnd: HWND, scale: i32) -> Self {
+        let light_theme = match is_light_theme() {
+            Ok(v) => v,
+            Err(_) => {
+                warn!("Fail to get system theme");
+                false
+            }
+        };
+        let (fg_color, bg_color) = match light_theme {
+            true => (FG_LIGHT_COLOR, BG_LIGHT_COLOR),
+            false => (FG_DARK_COLOR, BG_DARK_COLOR),
+        };
         GdiAAPainter {
             mem_hdc: Default::default(),
             mem_map: Default::default(),
@@ -52,6 +73,8 @@ impl GdiAAPainter {
             height: 0,
             size: 0,
             scale,
+            fg_color,
+            bg_color,
         }
     }
 
@@ -86,7 +109,7 @@ impl GdiAAPainter {
             let mem_map = CreateCompatibleBitmap(hdc, width, height);
             SelectObject(mem_dc, mem_map);
 
-            let brush = CreateSolidBrush(BG_COLOR);
+            let brush = CreateSolidBrush(self.fg_color);
             let rect = RECT {
                 left: 0,
                 top: 0,
@@ -164,7 +187,7 @@ impl GdiAAPainter {
                 right: self.width * self.scale,
                 bottom: self.width * self.scale,
             };
-            FillRect(self.scaled_hdc, &rect as _, CreateSolidBrush(FG_COLOR));
+            FillRect(self.scaled_hdc, &rect as _, CreateSolidBrush(self.fg_color));
 
             let cy = (WINDOW_BORDER_SIZE + ICON_BORDER_SIZE) * self.scale;
             let brush_icon = HBRUSH::default();
@@ -183,7 +206,7 @@ impl GdiAAPainter {
                         right,
                         bottom,
                     };
-                    FillRect(self.scaled_hdc, &rect as _, CreateSolidBrush(BG_COLOR));
+                    FillRect(self.scaled_hdc, &rect as _, CreateSolidBrush(self.bg_color));
                 }
 
                 let cx = cy + item_size * (i as i32);
@@ -201,4 +224,13 @@ impl GdiAAPainter {
             }
         }
     }
+}
+
+fn is_light_theme() -> Result<bool> {
+    let reg_key = RegKey::new_hkcu(
+        w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+        w!("SystemUsesLightTheme"),
+    )?;
+    let value = reg_key.get_int()?;
+    Ok(value == 1)
 }

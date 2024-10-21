@@ -3,7 +3,8 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
 use windows::Win32::System::Registry::{
     RegCloseKey, RegDeleteValueW, RegGetValueW, RegOpenKeyExW, RegSetValueExW, HKEY,
-    HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_SZ, REG_VALUE_TYPE, RRF_RT_REG_SZ,
+    HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_DWORD_BIG_ENDIAN, REG_SZ, REG_VALUE_TYPE,
+    RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
 };
 
 #[derive(Debug)]
@@ -55,6 +56,35 @@ impl RegKey {
         }
         let len = (size as usize - 1) / 2;
         Ok(Some(buffer[..len].to_vec()))
+    }
+
+    pub fn get_int(&self) -> Result<u32> {
+        let mut value: [u8; 4] = Default::default();
+        let mut size: u32 = std::mem::size_of_val(&value) as u32;
+        let mut kind: REG_VALUE_TYPE = Default::default();
+        let ret = unsafe {
+            RegGetValueW(
+                self.hkey,
+                None,
+                self.name,
+                RRF_RT_REG_DWORD,
+                Some(&mut kind),
+                Some(value.as_mut_ptr() as *mut _),
+                Some(&mut size),
+            )
+        };
+        if ret.is_err() {
+            bail!(
+                "Fail to get reg value, {:?}",
+                windows::core::Error::from(ret)
+            );
+        }
+        let value = if kind == REG_DWORD_BIG_ENDIAN {
+            u32::from_be_bytes(value)
+        } else {
+            u32::from_le_bytes(value)
+        };
+        Ok(value)
     }
 
     pub fn set_value(&self, value: &[u8]) -> Result<()> {

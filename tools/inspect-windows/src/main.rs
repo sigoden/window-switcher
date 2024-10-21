@@ -37,9 +37,9 @@ impl WindowInfo {
             pretty_bool(self.is_iconic),
             pretty_bool(self.is_topmost),
             size,
-            self.hwnd.0,
+            self.hwnd.0 as isize,
             self.title,
-            self.owner_hwnd.0,
+            self.owner_hwnd.0 as isize,
             self.owner_title
         )
     }
@@ -57,8 +57,8 @@ fn collect_windows_info() -> anyhow::Result<Vec<WindowInfo>> {
         let is_topmost = is_topmost_window(hwnd);
         let is_visible = is_visible_window(hwnd);
         let (width, height) = get_window_size(hwnd);
-        let owner_hwnd: HWND = unsafe { GetWindow(hwnd, GW_OWNER) };
-        let owner_title = if owner_hwnd.0 > 0 {
+        let owner_hwnd: HWND = unsafe { GetWindow(hwnd, GW_OWNER) }.unwrap_or_default();
+        let owner_title = if !owner_hwnd.is_invalid() {
             get_window_title(owner_hwnd)
         } else {
             "".into()
@@ -88,7 +88,7 @@ fn pretty_bool(value: bool) -> String {
 }
 
 extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    let windows: &mut Vec<HWND> = unsafe { &mut *(lparam.0 as *mut _) };
+    let windows: &mut Vec<HWND> = unsafe { &mut *(lparam.0 as *mut Vec<HWND>) };
     windows.push(hwnd);
     BOOL(1)
 }

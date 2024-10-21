@@ -151,13 +151,13 @@ pub fn get_window_title(hwnd: HWND) -> String {
 }
 
 pub fn get_owner_window(hwnd: HWND) -> HWND {
-    unsafe { GetWindow(hwnd, GW_OWNER) }
+    unsafe { GetWindow(hwnd, GW_OWNER) }.unwrap_or_default()
 }
 
 pub fn get_module_icon(hwnd: HWND) -> Option<HICON> {
     let ret = unsafe { SendMessageW(hwnd, WM_GETICON, WPARAM(ICON_BIG as _), None) }.0;
     if ret != 0 {
-        return Some(HICON(ret));
+        return Some(HICON(ret as _));
     }
 
     let ret = get_class_icon(hwnd);
@@ -255,7 +255,7 @@ pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, 
 }
 
 extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
-    let windows: &mut Vec<HWND> = unsafe { &mut *(lparam.0 as *mut _) };
+    let windows: &mut Vec<HWND> = unsafe { &mut *(lparam.0 as *mut Vec<HWND>) };
     windows.push(hwnd);
     BOOL(1)
 }

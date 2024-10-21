@@ -6,7 +6,7 @@ use crate::trayicon::TrayIcon;
 use crate::utils::{
     check_error, create_hicon_from_resource, get_foreground_window, get_module_icon,
     get_module_icon_ex, get_uwp_icon_data, get_window_user_data, is_iconic_window,
-    is_running_as_admin, list_windows, set_foreground_window, set_window_user_data, CheckError,
+    is_running_as_admin, list_windows, set_foreground_window, set_window_user_data,
 };
 
 use crate::painter::{GdiAAPainter, ICON_BORDER_SIZE, WINDOW_BORDER_SIZE};
@@ -108,7 +108,7 @@ impl App {
     fn eventloop() -> Result<()> {
         let mut message = MSG::default();
         loop {
-            let ret = unsafe { GetMessageW(&mut message, HWND(0), 0, 0) };
+            let ret = unsafe { GetMessageW(&mut message, HWND::default(), 0, 0) };
             match ret.0 {
                 -1 => {
                     unsafe { GetLastError() }.ok()?;
@@ -138,14 +138,13 @@ impl App {
             ..Default::default()
         };
 
-        let atom = unsafe { RegisterClassW(&window_class) }
-            .check_error()
+        let atom = check_error(|| unsafe { RegisterClassW(&window_class) })
             .map_err(|err| anyhow!("Failed to register class, {err}"))?;
 
         let hwnd = unsafe {
             CreateWindowExW(
                 WS_EX_TOOLWINDOW,
-                PCWSTR(atom as *mut u16),
+                PCWSTR(atom as _),
                 NAME,
                 WINDOW_STYLE(0),
                 CW_USEDEFAULT,
@@ -158,7 +157,6 @@ impl App {
                 None,
             )
         }
-        .check_error()
         .map_err(|err| anyhow!("Failed to create windows, {err}"))?;
 
         // hide caption
@@ -176,11 +174,16 @@ impl App {
                 Err(err) => {
                     if !trayicon.exist() {
                         error!("{err}, retrying in 3 second");
-                        let hwnd = self.hwnd;
+                        let hwnd = self.hwnd.0 as isize;
                         std::thread::spawn(move || {
                             std::thread::sleep(std::time::Duration::from_secs(3));
                             let _ = unsafe {
-                                PostMessageW(hwnd, WM_USER_REGISTER_TRAYICON, WPARAM(0), LPARAM(0))
+                                PostMessageW(
+                                    HWND(hwnd as _),
+                                    WM_USER_REGISTER_TRAYICON,
+                                    WPARAM(0),
+                                    LPARAM(0),
+                                )
                             };
                         });
                     }
@@ -342,7 +345,7 @@ impl App {
                             } else {
                                 state_id = *cache_id;
                                 let mut windows_set: IndexSet<isize> =
-                                    windows.iter().map(|(v, _)| v.0).collect();
+                                    windows.iter().map(|(v, _)| v.0 as _).collect();
                                 for id in cache_windows {
                                     if windows_set.contains(id) {
                                         state_windows.push(*id);
@@ -366,9 +369,9 @@ impl App {
                     }
                 }
                 if state_windows.is_empty() {
-                    state_windows = windows.iter().map(|(v, _)| v.0).collect();
+                    state_windows = windows.iter().map(|(v, _)| v.0 as _).collect();
                 }
-                let hwnd = HWND(state_windows[index]);
+                let hwnd = HWND(state_windows[index] as _);
                 self.switch_windows_state = SwitchWindowsState {
                     cache: Some((module_path.clone(), state_id, index, state_windows)),
                     modifier_released: false,
@@ -452,10 +455,10 @@ impl App {
 
         unsafe {
             // Change busy cursor to array cursor
-            if let Ok(hcursor) = LoadCursorW(HMODULE(0), IDC_ARROW) {
+            if let Ok(hcursor) = LoadCursorW(HMODULE::default(), IDC_ARROW) {
                 SetCursor(hcursor);
             }
-            SetFocus(hwnd);
+            let _ = SetFocus(hwnd);
             let _ = SetWindowPos(
                 hwnd,
                 HWND_TOPMOST,
@@ -542,7 +545,7 @@ fn get_app(hwnd: HWND) -> Result<&'static mut App> {
     unsafe {
         let ptr = check_error(|| get_window_user_data(hwnd))
             .map_err(|err| anyhow!("Failed to get window ptr, {err}"))?;
-        let tx: &mut App = &mut *(ptr as *mut _);
+        let tx: &mut App = &mut *(ptr as *mut App);
         Ok(tx)
     }
 }

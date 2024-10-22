@@ -1,5 +1,5 @@
 use crate::app::SwitchAppsState;
-use crate::utils::{check_error, get_moinitor_rect, RegKey};
+use crate::utils::{check_error, get_moinitor_rect, is_win11, RegKey};
 
 use anyhow::{Context, Result};
 use windows::core::w;
@@ -13,9 +13,9 @@ use windows::Win32::Graphics::GdiPlus::{
     FillModeAlternate, GdipAddPathArc, GdipClosePathFigure, GdipCreateBitmapFromHBITMAP,
     GdipCreateFromHDC, GdipCreatePath, GdipCreatePen1, GdipDeleteBrush, GdipDeleteGraphics,
     GdipDeletePath, GdipDeletePen, GdipDisposeImage, GdipDrawImageRect, GdipFillPath,
-    GdipGetPenBrushFill, GdipSetInterpolationMode, GdipSetSmoothingMode, GdiplusShutdown,
-    GdiplusStartup, GdiplusStartupInput, GpBitmap, GpBrush, GpGraphics, GpImage, GpPath, GpPen,
-    InterpolationModeHighQualityBicubic, SmoothingModeAntiAlias, Unit,
+    GdipFillRectangle, GdipGetPenBrushFill, GdipSetInterpolationMode, GdipSetSmoothingMode,
+    GdiplusShutdown, GdiplusStartup, GdiplusStartupInput, GpBitmap, GpBrush, GpGraphics, GpImage,
+    GpPath, GpPen, InterpolationModeHighQualityBicubic, SmoothingModeAntiAlias, Unit,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -39,8 +39,9 @@ pub struct GdiAAPainter {
     token: usize,
     hwnd: HWND,
     hdc_screen: HDC,
-    show: bool,
+    rounded_corner: bool,
     light: bool,
+    show: bool,
 }
 
 impl GdiAAPainter {
@@ -54,13 +55,14 @@ impl GdiAAPainter {
             .context("Failed to initialize GDI+")?;
 
         let hdc_screen = unsafe { GetDC(hwnd) };
-
+        let rounded_corner = is_win11();
         let light = is_light_theme().unwrap_or_default();
 
         Ok(Self {
             token,
             hwnd,
             hdc_screen,
+            rounded_corner,
             light,
             show: false,
         })
@@ -74,8 +76,13 @@ impl GdiAAPainter {
             height,
             icon_size,
             item_size,
-            corner_radius,
         } = Coordinate::new(state.apps.len() as i32);
+
+        let corner_radius = if self.rounded_corner {
+            item_size / 4
+        } else {
+            0
+        };
 
         let hwnd = self.hwnd;
         let hdc_screen = self.hdc_screen;
@@ -101,15 +108,26 @@ impl GdiAAPainter {
             let mut bg_brush_ptr: *mut GpBrush = &mut bg_brush;
             GdipGetPenBrushFill(bg_pen_ptr, &mut bg_brush_ptr as _);
 
-            draw_round_rect(
-                graphics_ptr,
-                bg_brush_ptr,
-                0.0,
-                0.0,
-                width as f32,
-                height as f32,
-                corner_radius as f32,
-            );
+            if self.rounded_corner {
+                draw_round_rect(
+                    graphics_ptr,
+                    bg_brush_ptr,
+                    0.0,
+                    0.0,
+                    width as f32,
+                    height as f32,
+                    corner_radius as f32,
+                );
+            } else {
+                GdipFillRectangle(
+                    graphics_ptr,
+                    bg_brush_ptr,
+                    0.0,
+                    0.0,
+                    width as f32,
+                    height as f32,
+                );
+            }
 
             let icons_width = item_size * state.apps.len() as i32;
             let icons_height = item_size;
@@ -395,7 +413,6 @@ struct Coordinate {
     height: i32,
     icon_size: i32,
     item_size: i32,
-    corner_radius: i32,
 }
 
 impl Coordinate {
@@ -414,8 +431,6 @@ impl Coordinate {
         let x = monitor_rect.left + (monitor_width - width) / 2;
         let y = monitor_rect.top + (monitor_height - height) / 2;
 
-        let corner_radius = item_size / 4;
-
         Self {
             x,
             y,
@@ -423,7 +438,6 @@ impl Coordinate {
             height,
             icon_size,
             item_size,
-            corner_radius,
         }
     }
 }

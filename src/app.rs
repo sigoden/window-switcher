@@ -1,6 +1,7 @@
 use crate::config::{edit_config_file, Config};
 use crate::foreground::ForegroundWatcher;
 use crate::keyboard::KeyboardListener;
+use crate::painter2::{find_clicked_app_index, GdiAAPainter};
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
@@ -9,7 +10,6 @@ use crate::utils::{
     is_running_as_admin, list_windows, set_foreground_window, set_window_user_data,
 };
 
-use crate::painter2::{GdiAAPainter, ICON_BORDER_SIZE, WINDOW_BORDER_SIZE};
 use anyhow::{anyhow, Result};
 use indexmap::IndexSet;
 use std::collections::HashMap;
@@ -18,11 +18,11 @@ use windows::core::PCWSTR;
 use windows::Win32::Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowLongPtrW,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowLongPtrW, LoadCursorW,
     PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SetWindowLongPtrW,
-    TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_STYLE, HICON, MSG, WINDOW_STYLE,
-    WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_LAYERED,
-    WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_STYLE, HICON, HTCLIENT, IDC_ARROW,
+    MSG, WINDOW_STYLE, WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP, WM_NCHITTEST, WM_RBUTTONUP,
+    WNDCLASSW, WS_CAPTION, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
 };
 
 pub const NAME: PCWSTR = w!("Window Switcher");
@@ -122,7 +122,11 @@ impl App {
         let hinstance = unsafe { GetModuleHandleW(None) }
             .map_err(|err| anyhow!("Failed to get current module handle, {err}"))?;
 
+        let hcursor = unsafe { LoadCursorW(None, IDC_ARROW) }
+            .map_err(|err| anyhow!("Failed to load arrow cursor, {err}"))?;
+
         let window_class = WNDCLASSW {
+            hCursor: hcursor,
             hInstance: HINSTANCE(hinstance.0),
             lpszClassName: NAME,
             style: CS_HREDRAW | CS_VREDRAW,
@@ -246,11 +250,12 @@ impl App {
                 let app = get_app(hwnd)?;
                 app.switch_windows_state.modifier_released = true;
             }
+            WM_NCHITTEST => {
+                return Ok(LRESULT(HTCLIENT as _));
+            }
             WM_LBUTTONUP => {
                 let app = get_app(hwnd)?;
-                let xpos = ((lparam.0 as usize) & 0xFFFF) as u16 as i32;
-                let ypos = (((lparam.0 as usize) & 0xFFFF_0000) >> 16) as u16 as i32;
-                app.click(xpos, ypos)?;
+                app.click();
             }
             WM_COMMAND => {
                 let value = wparam.0 as u32;
@@ -424,29 +429,19 @@ impl App {
             1
         };
 
-        self.painter.prepare(apps.len() as i32);
         let state = SwitchAppsState { apps, index };
         self.switch_apps_state = Some(state);
         debug!("switch apps, new state:{:?}", self.switch_apps_state);
         Ok(())
     }
 
-    fn click(&mut self, xpos: i32, ypos: i32) -> Result<()> {
+    fn click(&mut self) {
         if let Some(state) = self.switch_apps_state.as_mut() {
-            let icon_size = self.painter.icon_size();
-            let cy = WINDOW_BORDER_SIZE + ICON_BORDER_SIZE;
-            let item_size = icon_size + 2 * ICON_BORDER_SIZE;
-            for (i, (_, _)) in state.apps.iter().enumerate() {
-                let cx = WINDOW_BORDER_SIZE + item_size * (i as i32) + ICON_BORDER_SIZE;
-                if xpos >= cx && xpos <= cx + icon_size && ypos >= cy && ypos <= cy + icon_size {
-                    state.index = i;
-                    self.do_switch_app();
-                    break;
-                }
+            if let Some(i) = find_clicked_app_index(state) {
+                state.index = i;
+                self.do_switch_app();
             }
         }
-
-        Ok(())
     }
 
     fn do_switch_app(&mut self) {

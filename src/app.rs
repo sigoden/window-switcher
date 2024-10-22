@@ -1,7 +1,7 @@
 use crate::config::{edit_config_file, Config};
 use crate::foreground::ForegroundWatcher;
 use crate::keyboard::KeyboardListener;
-use crate::painter2::{find_clicked_app_index, GdiAAPainter};
+use crate::painter::{find_clicked_app_index, GdiAAPainter};
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{

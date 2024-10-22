@@ -1,8 +1,7 @@
 use crate::app::SwitchAppsState;
-use crate::utils::{check_error, get_moinitor_rect, is_win11, RegKey};
+use crate::utils::{check_error, get_moinitor_rect, is_light_theme, is_win11};
 
 use anyhow::{Context, Result};
-use windows::core::w;
 use windows::Win32::Foundation::{COLORREF, POINT, RECT, SIZE};
 use windows::Win32::Graphics::Gdi::{
     CreateCompatibleBitmap, CreateCompatibleDC, CreateRoundRectRgn, CreateSolidBrush, DeleteDC,
@@ -56,7 +55,7 @@ impl GdiAAPainter {
 
         let hdc_screen = unsafe { GetDC(hwnd) };
         let rounded_corner = is_win11();
-        let light = is_light_theme().unwrap_or_default();
+        let light = is_light_theme();
 
         Ok(Self {
             token,
@@ -236,15 +235,6 @@ pub fn find_clicked_app_index(state: &SwitchAppsState) -> Option<usize> {
         }
     }
     None
-}
-
-fn is_light_theme() -> Result<bool> {
-    let reg_key = RegKey::new_hkcu(
-        w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
-        w!("SystemUsesLightTheme"),
-    )?;
-    let value = reg_key.get_int()?;
-    Ok(value == 1)
 }
 
 const fn theme_color(light_theme: bool) -> (u32, u32) {

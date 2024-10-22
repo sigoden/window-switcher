@@ -9,28 +9,20 @@ use crate::utils::{
     is_running_as_admin, list_windows, set_foreground_window, set_window_user_data,
 };
 
-use crate::painter::{GdiAAPainter, ICON_BORDER_SIZE, WINDOW_BORDER_SIZE};
+use crate::painter2::{GdiAAPainter, ICON_BORDER_SIZE, WINDOW_BORDER_SIZE};
 use anyhow::{anyhow, Result};
 use indexmap::IndexSet;
 use std::collections::HashMap;
 use windows::core::w;
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::{
-    GetLastError, HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, POINT, WPARAM,
-};
-use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MonitorFromPoint, RedrawWindow, HRGN, MONITORINFO, MONITOR_DEFAULTTONEAREST,
-    RDW_ERASE, RDW_INVALIDATE,
-};
+use windows::Win32::Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, GetCursorPos, GetMessageW,
-    GetWindowLongPtrW, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW,
-    RegisterWindowMessageW, SetCursor, SetWindowLongPtrW, SetWindowPos, ShowWindow,
-    TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_STYLE, HICON, HWND_TOPMOST,
-    IDC_ARROW, MSG, SWP_SHOWWINDOW, SW_HIDE, WINDOW_STYLE, WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP,
-    WM_PAINT, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_TOOLWINDOW,
+    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowLongPtrW,
+    PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SetWindowLongPtrW,
+    TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_STYLE, HICON, MSG, WINDOW_STYLE,
+    WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_LAYERED,
+    WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
 };
 
 pub const NAME: PCWSTR = w!("Window Switcher");
@@ -67,7 +59,7 @@ pub struct App {
 impl App {
     pub fn start(config: &Config) -> Result<()> {
         let hwnd = Self::create_window()?;
-        let painter = GdiAAPainter::new(hwnd, 6);
+        let painter = GdiAAPainter::new(hwnd)?;
 
         let _foreground_watcher = ForegroundWatcher::init(&config.switch_windows_blacklist)?;
         let _keyboard_listener = KeyboardListener::init(hwnd, &config.to_hotkeys())?;
@@ -143,7 +135,7 @@ impl App {
 
         let hwnd = unsafe {
             CreateWindowExW(
-                WS_EX_TOOLWINDOW,
+                WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_TOOLWINDOW,
                 PCWSTR(atom as _),
                 NAME,
                 WINDOW_STYLE(0),
@@ -224,9 +216,6 @@ impl App {
                 let app = get_app(hwnd)?;
                 let reverse = lparam.0 == 1;
                 app.switch_apps(reverse)?;
-                unsafe {
-                    let _ = RedrawWindow(hwnd, None, HRGN::default(), RDW_ERASE | RDW_INVALIDATE);
-                }
                 if let Some(state) = &app.switch_apps_state {
                     app.painter.paint(state);
                 }
@@ -290,10 +279,6 @@ impl App {
             }
             WM_ERASEBKGND => {
                 return Ok(LRESULT(0));
-            }
-            WM_PAINT => {
-                let app = get_app(hwnd)?;
-                app.paint()?;
             }
             _ if msg == WM_USER_REGISTER_TRAYICON || unsafe { msg == WM_TASKBARCREATED } => {
                 let app = get_app(hwnd)?;
@@ -403,7 +388,6 @@ impl App {
             debug!("switch apps: new index:{}", state.index);
             return Ok(());
         }
-        let hwnd = self.hwnd;
         let windows = list_windows(self.config.switch_apps_ignore_minimal)?;
         let mut apps = vec![];
         for (module_path, hwnds) in windows.iter() {
@@ -431,44 +415,6 @@ impl App {
         if num_apps == 0 {
             return Ok(());
         }
-        let mut mi = MONITORINFO {
-            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
-            ..MONITORINFO::default()
-        };
-        unsafe {
-            let mut cursor = POINT::default();
-            let _ = GetCursorPos(&mut cursor);
-
-            let hmonitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
-            let _ = GetMonitorInfoW(hmonitor, &mut mi);
-        }
-
-        let monitor_rect = mi.rcMonitor;
-        let monitor_width = monitor_rect.right - monitor_rect.left;
-        let monitor_height = monitor_rect.bottom - monitor_rect.top;
-        let (icon_size, window_width, window_height) =
-            self.painter.init(monitor_width, apps.len() as i32);
-
-        // Calculate the position to center the window
-        let x = monitor_rect.left + (monitor_width - window_width) / 2;
-        let y = monitor_rect.top + (monitor_height - window_height) / 2;
-
-        unsafe {
-            // Change busy cursor to array cursor
-            if let Ok(hcursor) = LoadCursorW(HMODULE::default(), IDC_ARROW) {
-                SetCursor(hcursor);
-            }
-            let _ = SetFocus(hwnd);
-            let _ = SetWindowPos(
-                hwnd,
-                HWND_TOPMOST,
-                x,
-                y,
-                window_width,
-                window_height,
-                SWP_SHOWWINDOW,
-            );
-        }
 
         let index = if apps.len() == 1 {
             0
@@ -478,31 +424,21 @@ impl App {
             1
         };
 
-        self.switch_apps_state = Some(SwitchAppsState {
-            apps,
-            index,
-            icon_size,
-        });
+        self.painter.prepare(apps.len() as i32);
+        let state = SwitchAppsState { apps, index };
+        self.switch_apps_state = Some(state);
         debug!("switch apps, new state:{:?}", self.switch_apps_state);
-        Ok(())
-    }
-
-    fn paint(&mut self) -> Result<()> {
-        self.painter.display();
         Ok(())
     }
 
     fn click(&mut self, xpos: i32, ypos: i32) -> Result<()> {
         if let Some(state) = self.switch_apps_state.as_mut() {
+            let icon_size = self.painter.icon_size();
             let cy = WINDOW_BORDER_SIZE + ICON_BORDER_SIZE;
-            let item_size = state.icon_size + 2 * ICON_BORDER_SIZE;
+            let item_size = icon_size + 2 * ICON_BORDER_SIZE;
             for (i, (_, _)) in state.apps.iter().enumerate() {
                 let cx = WINDOW_BORDER_SIZE + item_size * (i as i32) + ICON_BORDER_SIZE;
-                if xpos >= cx
-                    && xpos <= cx + state.icon_size
-                    && ypos >= cy
-                    && ypos <= cy + state.icon_size
-                {
+                if xpos >= cx && xpos <= cx + icon_size && ypos >= cy && ypos <= cy + icon_size {
                     state.index = i;
                     self.do_switch_app();
                     break;
@@ -514,29 +450,17 @@ impl App {
     }
 
     fn do_switch_app(&mut self) {
-        let hwnd = self.hwnd;
         if let Some(state) = self.switch_apps_state.take() {
             if let Some((_, id)) = state.apps.get(state.index) {
                 set_foreground_window(*id);
             }
-            for (hicon, _) in state.apps {
-                let _ = unsafe { DestroyIcon(hicon) };
-            }
-            unsafe {
-                let _ = ShowWindow(hwnd, SW_HIDE);
-            }
+            self.painter.unpaint(state);
         }
     }
 
     fn cancel_switch_app(&mut self) {
-        let hwnd = self.hwnd;
         if let Some(state) = self.switch_apps_state.take() {
-            for (hicon, _) in state.apps {
-                let _ = unsafe { DestroyIcon(hicon) };
-            }
-            unsafe {
-                let _ = ShowWindow(hwnd, SW_HIDE);
-            }
+            self.painter.unpaint(state);
         }
     }
 }
@@ -560,5 +484,4 @@ struct SwitchWindowsState {
 pub struct SwitchAppsState {
     pub apps: Vec<(HICON, HWND)>,
     pub index: usize,
-    pub icon_size: i32,
 }

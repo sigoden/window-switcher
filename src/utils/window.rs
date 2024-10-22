@@ -1,8 +1,11 @@
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use windows::core::PWSTR;
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, MAX_PATH, TRUE, WPARAM};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, MAX_PATH, POINT, RECT, TRUE, WPARAM};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+use windows::Win32::Graphics::Gdi::{
+    GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+};
 use windows::Win32::System::Console::{AllocConsole, FreeConsole, GetConsoleWindow};
 use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
 use windows::Win32::System::Threading::{
@@ -10,11 +13,11 @@ use windows::Win32::System::Threading::{
     PROCESS_VM_READ,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateIconFromResourceEx, EnumWindows, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
-    GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-    LoadIconW, SendMessageW, SetForegroundWindow, SetWindowPos, ShowWindow, GCL_HICON, GWL_EXSTYLE,
-    GWL_USERDATA, GW_OWNER, HICON, ICON_BIG, IDI_APPLICATION, LR_DEFAULTCOLOR, SWP_NOZORDER,
-    SW_RESTORE, WINDOWPLACEMENT, WM_GETICON, WS_EX_TOPMOST,
+    CreateIconFromResourceEx, EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow,
+    GetWindowLongPtrW, GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
+    IsWindowVisible, LoadIconW, SendMessageW, SetForegroundWindow, SetWindowPos, ShowWindow,
+    GCL_HICON, GWL_EXSTYLE, GWL_USERDATA, GW_OWNER, HICON, ICON_BIG, IDI_APPLICATION,
+    LR_DEFAULTCOLOR, SWP_NOZORDER, SW_RESTORE, WINDOWPLACEMENT, WM_GETICON, WS_EX_TOPMOST,
 };
 
 use std::fs::File;
@@ -54,6 +57,21 @@ pub fn is_cloaked_window(hwnd: HWND) -> bool {
 pub fn is_small_window(hwnd: HWND) -> bool {
     let (width, height) = get_window_size(hwnd);
     width < 120 || height < 90
+}
+
+pub fn get_moinitor_rect() -> RECT {
+    unsafe {
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..MONITORINFO::default()
+        };
+        let mut cursor = POINT::default();
+        let _ = GetCursorPos(&mut cursor);
+
+        let hmonitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
+        let _ = GetMonitorInfoW(hmonitor, &mut mi);
+        mi.rcMonitor
+    }
 }
 
 pub fn get_window_size(hwnd: HWND) -> (i32, i32) {

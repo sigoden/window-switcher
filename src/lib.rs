@@ -8,7 +8,7 @@ mod app;
 mod config;
 mod foreground;
 mod keyboard;
-mod painter;
+mod painter2;
 mod startup;
 mod trayicon;
 

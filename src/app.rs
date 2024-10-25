@@ -400,8 +400,17 @@ impl App {
             } else {
                 hwnds[0].0
             };
-            let module_hicon = get_app_icon(&mut self.cached_icons, module_path, module_hwnd);
-            apps.push((module_hicon, module_hwnd));
+            let module_hicon = self
+                .cached_icons
+                .entry(module_path.clone())
+                .or_insert_with(|| {
+                    get_app_icon(
+                        &self.config.switch_apps_override_icons,
+                        module_path,
+                        module_hwnd,
+                    )
+                });
+            apps.push((*module_hicon, module_hwnd));
         }
         let num_apps = apps.len() as i32;
         if num_apps == 0 {

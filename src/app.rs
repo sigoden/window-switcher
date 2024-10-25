@@ -5,8 +5,7 @@ use crate::painter::{find_clicked_app_index, GdiAAPainter};
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
-    check_error, create_hicon_from_resource, get_foreground_window, get_module_icon,
-    get_module_icon_ex, get_uwp_icon_data, get_window_user_data, is_iconic_window,
+    check_error, get_app_icon, get_foreground_window, get_window_user_data, is_iconic_window,
     is_running_as_admin, list_windows, set_foreground_window, set_window_user_data,
 };
 
@@ -52,7 +51,7 @@ pub struct App {
     config: Config,
     switch_windows_state: SwitchWindowsState,
     switch_apps_state: Option<SwitchAppsState>,
-    uwp_icons: HashMap<String, Vec<u8>>,
+    cached_icons: HashMap<String, HICON>,
     painter: GdiAAPainter,
 }
 
@@ -84,7 +83,7 @@ impl App {
                 modifier_released: true,
             },
             switch_apps_state: None,
-            uwp_icons: Default::default(),
+            cached_icons: Default::default(),
             painter,
         };
 
@@ -401,20 +400,8 @@ impl App {
             } else {
                 hwnds[0].0
             };
-            let mut module_hicon = None;
-            if module_path.starts_with("C:\\Program Files\\WindowsApps") {
-                if let Some(data) = self.uwp_icons.get(module_path) {
-                    module_hicon = create_hicon_from_resource(data)
-                } else if let Some(data) = get_uwp_icon_data(module_path) {
-                    module_hicon = create_hicon_from_resource(&data);
-                    self.uwp_icons.insert(module_path.clone(), data);
-                }
-            }
-            if let Some(hicon) = module_hicon.or_else(|| get_module_icon_ex(module_path)) {
-                apps.push((hicon, module_hwnd));
-            } else if let Some(hicon) = get_module_icon(module_hwnd) {
-                apps.push((hicon, module_hwnd));
-            }
+            let module_hicon = get_app_icon(&mut self.cached_icons, module_path, module_hwnd);
+            apps.push((module_hicon, module_hwnd));
         }
         let num_apps = apps.len() as i32;
         if num_apps == 0 {

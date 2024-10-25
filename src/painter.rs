@@ -18,8 +18,8 @@ use windows::Win32::Graphics::GdiPlus::{
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
 use windows::Win32::UI::WindowsAndMessaging::{
-    DestroyIcon, DrawIconEx, GetCursorPos, ShowWindow, UpdateLayeredWindow, DI_NORMAL, SW_HIDE,
-    SW_SHOW, ULW_ALPHA,
+    DrawIconEx, GetCursorPos, ShowWindow, UpdateLayeredWindow, DI_NORMAL, SW_HIDE, SW_SHOW,
+    ULW_ALPHA,
 };
 use windows::Win32::{Foundation::HWND, Graphics::Gdi::GetDC};
 
@@ -196,12 +196,9 @@ impl GdiAAPainter {
         self.show = true;
     }
 
-    pub fn unpaint(&mut self, state: SwitchAppsState) {
+    pub fn unpaint(&mut self, _state: SwitchAppsState) {
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_HIDE);
-        }
-        for (hicon, _) in state.apps {
-            let _ = unsafe { DestroyIcon(hicon) };
         }
         self.show = false;
     }

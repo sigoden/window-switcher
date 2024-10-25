@@ -1,5 +1,6 @@
+use super::to_wstring;
+
 use std::{
-    collections::HashMap,
     fs::File,
     io::{BufReader, Read},
     mem,
@@ -7,6 +8,7 @@ use std::{
     time,
 };
 
+use indexmap::IndexMap;
 use windows::{
     core::PCWSTR,
     Win32::{
@@ -16,8 +18,9 @@ use windows::{
             Controls::IImageList,
             Shell::{SHGetFileInfoW, SHGetImageList, SHFILEINFOW, SHGFI_SYSICONINDEX},
             WindowsAndMessaging::{
-                CopyIcon, CreateIconFromResourceEx, LoadIconW, SendMessageW, GCL_HICON, HICON,
-                ICON_BIG, IDI_APPLICATION, LR_DEFAULTCOLOR, WM_GETICON,
+                CopyIcon, CreateIconFromResourceEx, LoadIconW, LoadImageW, SendMessageW, GCL_HICON,
+                HICON, ICON_BIG, IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LR_DEFAULTSIZE,
+                LR_LOADFROMFILE, WM_GETICON,
             },
         },
     },
@@ -26,26 +29,37 @@ use xml::reader::XmlEvent;
 use xml::EventReader;
 
 pub fn get_app_icon(
-    cached_icons: &mut HashMap<String, HICON>,
+    override_icons: &IndexMap<String, String>,
     module_path: &str,
     hwnd: HWND,
 ) -> HICON {
-    if let Some(icon) = cached_icons.get(module_path) {
-        return *icon;
+    let module_path_lc = module_path.to_lowercase();
+    if let Some((_, v)) = override_icons
+        .iter()
+        .find(|(k, _)| module_path_lc.contains(*k))
+    {
+        let mut override_path = PathBuf::from(v);
+        if !override_path.is_absolute() {
+            if let Some(module_dir) = Path::new(module_path).parent() {
+                override_path = module_dir.join(override_path);
+            }
+        }
+        if let Some(icon) = load_image_as_hicon(override_path) {
+            return icon;
+        }
     }
 
     if module_path.starts_with("C:\\Program Files\\WindowsApps") {
-        let icon = get_appx_logo_path(module_path)
-            .and_then(|image_path| load_image_as_hicon(&image_path))
-            .unwrap_or_else(fallback_icon);
-        cached_icons.insert(module_path.to_string(), icon);
-        return icon;
+        if let Some(icon) =
+            get_appx_logo_path(module_path).and_then(|image_path| load_image_as_hicon(&image_path))
+        {
+            return icon;
+        }
     }
-    let icon = get_exe_icon(module_path)
+
+    get_exe_icon(module_path)
         .or_else(|| get_window_icon(hwnd))
-        .unwrap_or_else(fallback_icon);
-    cached_icons.insert(module_path.to_string(), icon);
-    icon
+        .unwrap_or_else(fallback_icon)
 }
 
 fn get_appx_logo_path(module_path: &str) -> Option<PathBuf> {
@@ -104,14 +118,7 @@ fn get_appx_logo_path(module_path: &str) -> Option<PathBuf> {
     let extension = format!(".{}", logo_path.extension()?.to_string_lossy());
     let logo_path = logo_path.display().to_string();
     let prefix = &logo_path[0..(logo_path.len() - extension.len())];
-    for size in [
-        "targetsize-256",
-        "targetsize-128",
-        "targetsize-72",
-        "targetsize-36",
-        "scale-200",
-        "scale-100",
-    ] {
+    for size in ["targetsize-256", "targetsize-128", "scale-200", "scale-100"] {
         let logo_path = PathBuf::from(format!("{prefix}.{size}{extension}"));
         if logo_path.exists() {
             return Some(logo_path);
@@ -121,10 +128,30 @@ fn get_appx_logo_path(module_path: &str) -> Option<PathBuf> {
 }
 
 pub fn load_image_as_hicon<T: AsRef<Path>>(image_path: T) -> Option<HICON> {
-    let mut logo_file = File::open(image_path.as_ref()).ok()?;
-    let mut buffer = vec![];
-    logo_file.read_to_end(&mut buffer).ok()?;
-    unsafe { CreateIconFromResourceEx(&buffer, TRUE, 0x30000, 100, 100, LR_DEFAULTCOLOR) }.ok()
+    let image_path = image_path.as_ref();
+    if !image_path.exists() {
+        return None;
+    }
+    if let Some("ico") = image_path.extension().and_then(|v| v.to_str()) {
+        let icon_path = to_wstring(image_path.to_string_lossy().as_ref());
+        unsafe {
+            LoadImageW(
+                None,
+                PCWSTR(icon_path.as_ptr()),
+                IMAGE_ICON,
+                256,
+                256,
+                LR_LOADFROMFILE | LR_DEFAULTSIZE,
+            )
+        }
+        .ok()
+        .map(|v| HICON(v.0))
+    } else {
+        let mut logo_file = File::open(image_path).ok()?;
+        let mut buffer = vec![];
+        logo_file.read_to_end(&mut buffer).ok()?;
+        unsafe { CreateIconFromResourceEx(&buffer, TRUE, 0x30000, 100, 100, LR_DEFAULTCOLOR) }.ok()
+    }
 }
 
 fn fallback_icon() -> HICON {

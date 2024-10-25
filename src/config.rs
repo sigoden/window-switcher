@@ -1,7 +1,8 @@
 use std::{collections::HashSet, fs, path::PathBuf, process::Command};
 
 use anyhow::{anyhow, Result};
-use ini::Ini;
+use indexmap::IndexMap;
+use ini::{Ini, ParseOption};
 use log::LevelFilter;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     VIRTUAL_KEY, VK_LCONTROL, VK_LMENU, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RWIN,
@@ -25,6 +26,7 @@ pub struct Config {
     pub switch_apps_enable: bool,
     pub switch_apps_hotkey: Hotkey,
     pub switch_apps_ignore_minimal: bool,
+    pub switch_apps_override_icons: IndexMap<String, String>,
 }
 
 impl Default for Config {
@@ -45,6 +47,7 @@ impl Default for Config {
             switch_apps_hotkey: Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", "alt + tab")
                 .unwrap(),
             switch_apps_ignore_minimal: false,
+            switch_apps_override_icons: Default::default(),
         }
     }
 }
@@ -62,7 +65,7 @@ impl Config {
             if let Some(level) = section.get("level").and_then(|v| v.parse().ok()) {
                 conf.log_level = level;
             }
-            if let Some(path) = section.get("path") {
+            if let Some(path) = section.get("path").map(normalize_path_value) {
                 if !path.trim().is_empty() {
                     let mut path = PathBuf::from(path);
                     if !path.is_absolute() {
@@ -84,6 +87,7 @@ impl Config {
 
             if let Some(v) = section
                 .get("blacklist")
+                .map(normalize_path_value)
                 .map(|v| v.split(',').map(|v| v.trim().to_string()).collect())
             {
                 conf.switch_windows_blacklist = v;
@@ -104,6 +108,16 @@ impl Config {
             }
             if let Some(v) = section.get("ignore_minimal").and_then(Config::to_bool) {
                 conf.switch_apps_ignore_minimal = v;
+            }
+            if let Some(v) = section.get("override_icons").map(normalize_path_value) {
+                conf.switch_apps_override_icons = v
+                    .split([',', ';'])
+                    .filter_map(|v| {
+                        v.trim()
+                            .split_once("=")
+                            .map(|(k, v)| (k.to_lowercase(), v.to_string()))
+                    })
+                    .collect();
             }
         }
         Ok(conf)
@@ -271,7 +285,11 @@ impl Hotkey {
 
 pub fn load_config() -> Result<Config> {
     let filepath = get_config_path()?;
-    let conf = Ini::load_from_file(&filepath)
+    let opt = ParseOption {
+        enabled_escape: false,
+        ..Default::default()
+    };
+    let conf = Ini::load_from_file_opt(&filepath, opt)
         .map_err(|err| anyhow!("Failed to load config file '{}', {err}", filepath.display()))?;
     Config::load(&conf)
 }
@@ -306,6 +324,10 @@ fn get_config_path() -> Result<PathBuf> {
     let folder = get_exe_folder()?;
     let config_path = folder.join("window-switcher.ini");
     Ok(config_path)
+}
+
+fn normalize_path_value(value: &str) -> String {
+    value.replace("\\\\", "\\")
 }
 
 #[cfg(test)]

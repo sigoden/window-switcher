@@ -38,7 +38,13 @@ pub fn get_app_icon(
         .iter()
         .find(|(k, _)| module_path_lc.contains(*k))
     {
-        if let Some(icon) = load_image_as_hicon(v) {
+        let mut override_path = PathBuf::from(v);
+        if !override_path.is_absolute() {
+            if let Some(module_dir) = Path::new(module_path).parent() {
+                override_path = module_dir.join(override_path);
+            }
+        }
+        if let Some(icon) = load_image_as_hicon(override_path) {
             return icon;
         }
     }
@@ -123,6 +129,9 @@ fn get_appx_logo_path(module_path: &str) -> Option<PathBuf> {
 
 pub fn load_image_as_hicon<T: AsRef<Path>>(image_path: T) -> Option<HICON> {
     let image_path = image_path.as_ref();
+    if !image_path.exists() {
+        return None;
+    }
     if let Some("ico") = image_path.extension().and_then(|v| v.to_str()) {
         let icon_path = to_wstring(image_path.to_string_lossy().as_ref());
         unsafe {

@@ -111,7 +111,7 @@ impl Config {
             }
             if let Some(v) = section.get("override_icons").map(normalize_path_value) {
                 conf.switch_apps_override_icons = v
-                    .split(|c: char| c == ',' || c == ';')
+                    .split([',', ';'])
                     .filter_map(|v| {
                         v.trim()
                             .split_once("=")

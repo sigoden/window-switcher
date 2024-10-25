@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use windows::core::PWSTR;
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, MAX_PATH, POINT, RECT, TRUE, WPARAM};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, MAX_PATH, POINT, RECT};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::Graphics::Gdi::{
     GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
@@ -13,19 +13,14 @@ use windows::Win32::System::Threading::{
     PROCESS_VM_READ,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateIconFromResourceEx, EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow,
-    GetWindowLongPtrW, GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, LoadIconW, SendMessageW, SetForegroundWindow, SetWindowPos, ShowWindow,
-    GCL_HICON, GWL_EXSTYLE, GWL_USERDATA, GW_OWNER, HICON, ICON_BIG, IDI_APPLICATION,
-    LR_DEFAULTCOLOR, SWP_NOZORDER, SW_RESTORE, WINDOWPLACEMENT, WM_GETICON, WS_EX_TOPMOST,
+    EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
+    GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+    SetForegroundWindow, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_USERDATA, GW_OWNER,
+    SWP_NOZORDER, SW_RESTORE, WINDOWPLACEMENT, WS_EX_TOPMOST,
 };
 
-use std::fs::File;
-use std::io::{BufReader, Read};
 use std::path::PathBuf;
 use std::{ffi::c_void, mem::size_of};
-use xml::reader::XmlEvent;
-use xml::EventReader;
 
 pub fn is_iconic_window(hwnd: HWND) -> bool {
     unsafe { IsIconic(hwnd) }.as_bool()
@@ -172,19 +167,6 @@ pub fn get_owner_window(hwnd: HWND) -> HWND {
     unsafe { GetWindow(hwnd, GW_OWNER) }.unwrap_or_default()
 }
 
-pub fn get_module_icon(hwnd: HWND) -> Option<HICON> {
-    let ret = unsafe { SendMessageW(hwnd, WM_GETICON, WPARAM(ICON_BIG as _), None) }.0;
-    if ret != 0 {
-        return Some(HICON(ret as _));
-    }
-
-    let ret = get_class_icon(hwnd);
-    if ret != 0 {
-        return Some(HICON(ret as _));
-    }
-    None
-}
-
 #[cfg(target_arch = "x86")]
 pub fn get_window_user_data(hwnd: HWND) -> i32 {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowLongW(hwnd, GWL_USERDATA) }
@@ -202,15 +184,6 @@ pub fn set_window_user_data(hwnd: HWND, ptr: i32) -> i32 {
 #[cfg(not(target_arch = "x86"))]
 pub fn set_window_user_data(hwnd: HWND, ptr: isize) -> isize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(hwnd, GWL_USERDATA, ptr) }
-}
-
-#[cfg(target_arch = "x86")]
-pub fn get_class_icon(hwnd: HWND) -> u32 {
-    unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongW(hwnd, GCL_HICON) }
-}
-#[cfg(not(target_arch = "x86"))]
-pub fn get_class_icon(hwnd: HWND) -> usize {
-    unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongPtrW(hwnd, GCL_HICON) }
 }
 
 /// Lists available windows
@@ -276,90 +249,4 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let windows: &mut Vec<HWND> = unsafe { &mut *(lparam.0 as *mut Vec<HWND>) };
     windows.push(hwnd);
     BOOL(1)
-}
-
-pub fn get_uwp_icon_data(module_path: &str) -> Option<Vec<u8>> {
-    let logo_path = get_appx_logo_path(module_path)?;
-    let mut logo_file = File::open(logo_path).ok()?;
-    let mut buffer = vec![];
-    logo_file.read_to_end(&mut buffer).ok()?;
-    Some(buffer)
-}
-
-fn get_appx_logo_path(module_path: &str) -> Option<PathBuf> {
-    let module_path = PathBuf::from(module_path);
-    let executable = module_path.file_name()?.to_string_lossy();
-    let module_dir = module_path.parent()?;
-    let manifest_path = module_dir.join("AppxManifest.xml");
-    let manifest_file = File::open(manifest_path).ok()?;
-    let manifest_file = BufReader::new(manifest_file); // Buffering is important for performance
-    let reader = EventReader::new(manifest_file);
-    let mut logo_value = None;
-    let mut matched = false;
-    let mut paths = vec![];
-    let mut depth = 0;
-    for e in reader {
-        match e {
-            Ok(XmlEvent::StartElement {
-                name, attributes, ..
-            }) => {
-                if paths.len() == depth {
-                    paths.push(name.local_name.clone())
-                }
-                let xpath = paths.join("/");
-                if xpath == "Package/Applications/Application" {
-                    matched = attributes
-                        .iter()
-                        .any(|v| v.name.local_name == "Executable" && v.value == executable);
-                } else if xpath == "Package/Applications/Application/VisualElements" && matched {
-                    if let Some(value) = attributes
-                        .iter()
-                        .find(|v| {
-                            ["Square44x44Logo", "Square30x30Logo", "SmallLogo"]
-                                .contains(&v.name.local_name.as_str())
-                        })
-                        .map(|v| v.value.clone())
-                    {
-                        logo_value = Some(value);
-                        break;
-                    }
-                }
-                depth += 1;
-            }
-            Ok(XmlEvent::EndElement { .. }) => {
-                if paths.len() == depth {
-                    paths.pop();
-                }
-                depth -= 1;
-            }
-            Err(_) => {
-                break;
-            }
-            _ => {}
-        }
-    }
-    let logo_path = module_dir.join(logo_value?);
-    let extension = format!(".{}", logo_path.extension()?.to_string_lossy());
-    let logo_path = logo_path.display().to_string();
-    let prefix = &logo_path[0..(logo_path.len() - extension.len())];
-    for size in [
-        "targetsize-256",
-        "targetsize-128",
-        "targetsize-72",
-        "targetsize-36",
-        "scale-200",
-        "scale-100",
-    ] {
-        let logo_path = PathBuf::from(format!("{prefix}.{size}{extension}"));
-        if logo_path.exists() {
-            return Some(logo_path);
-        }
-    }
-    None
-}
-
-pub fn create_hicon_from_resource(data: &[u8]) -> Option<HICON> {
-    unsafe { CreateIconFromResourceEx(data, TRUE, 0x30000, 100, 100, LR_DEFAULTCOLOR) }
-        .ok()
-        .or_else(|| unsafe { LoadIconW(None, IDI_APPLICATION) }.ok())
 }

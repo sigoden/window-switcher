@@ -296,7 +296,10 @@ impl App {
     }
 
     fn switch_windows(&mut self, hwnd: HWND, reverse: bool) -> Result<bool> {
-        let windows = list_windows(self.config.switch_windows_ignore_minimal)?;
+        let windows = list_windows(
+            self.config.switch_windows_ignore_minimal,
+            self.config.switch_apps_all_desktops,
+        )?;
         debug!(
             "switch windows: hwnd:{hwnd:?} reverse:{reverse} state:{:?}",
             self.switch_windows_state
@@ -394,7 +397,10 @@ impl App {
             debug!("switch apps: new index:{}", state.index);
             return Ok(());
         }
-        let windows = list_windows(self.config.switch_apps_ignore_minimal)?;
+        let windows = list_windows(
+            self.config.switch_apps_ignore_minimal,
+            self.config.switch_apps_all_desktops,
+        )?;
         let mut apps = vec![];
         for (module_path, hwnds) in windows.iter() {
             let module_hwnd = if is_iconic_window(hwnds[0].0) {

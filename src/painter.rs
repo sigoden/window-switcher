@@ -2,26 +2,33 @@ use crate::app::SwitchAppsState;
 use crate::utils::{check_error, get_moinitor_rect, is_light_theme, is_win11};
 
 use anyhow::{Context, Result};
-use windows::Win32::Foundation::{COLORREF, POINT, RECT, SIZE};
-use windows::Win32::Graphics::Gdi::{
-    CreateCompatibleBitmap, CreateCompatibleDC, CreateRoundRectRgn, CreateSolidBrush, DeleteDC,
-    DeleteObject, FillRect, FillRgn, ReleaseDC, SelectObject, SetStretchBltMode, StretchBlt,
-    AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION, HALFTONE, HBITMAP, HBRUSH, HDC, HPALETTE, SRCCOPY,
+use windows::Win32::{
+    Foundation::{COLORREF, HWND, POINT, RECT, SIZE},
+    Graphics::{
+        Gdi::{
+            CreateCompatibleBitmap, CreateCompatibleDC, CreateRoundRectRgn, CreateSolidBrush,
+            DeleteDC, DeleteObject, FillRect, FillRgn, GetDC, ReleaseDC, SelectObject,
+            SetStretchBltMode, StretchBlt, AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION, HALFTONE,
+            HBITMAP, HBRUSH, HDC, HPALETTE, SRCCOPY,
+        },
+        GdiPlus::{
+            FillModeAlternate, GdipAddPathArc, GdipClosePathFigure, GdipCreateBitmapFromHBITMAP,
+            GdipCreateFromHDC, GdipCreatePath, GdipCreatePen1, GdipDeleteBrush, GdipDeleteGraphics,
+            GdipDeletePath, GdipDeletePen, GdipDisposeImage, GdipDrawImageRect, GdipFillPath,
+            GdipFillRectangle, GdipGetPenBrushFill, GdipSetInterpolationMode, GdipSetSmoothingMode,
+            GdiplusShutdown, GdiplusStartup, GdiplusStartupInput, GpBitmap, GpBrush, GpGraphics,
+            GpImage, GpPath, GpPen, InterpolationModeHighQualityBicubic, SmoothingModeAntiAlias,
+            Unit,
+        },
+    },
+    UI::{
+        Input::KeyboardAndMouse::SetFocus,
+        WindowsAndMessaging::{
+            DrawIconEx, GetCursorPos, ShowWindow, UpdateLayeredWindow, DI_NORMAL, SW_HIDE, SW_SHOW,
+            ULW_ALPHA,
+        },
+    },
 };
-use windows::Win32::Graphics::GdiPlus::{
-    FillModeAlternate, GdipAddPathArc, GdipClosePathFigure, GdipCreateBitmapFromHBITMAP,
-    GdipCreateFromHDC, GdipCreatePath, GdipCreatePen1, GdipDeleteBrush, GdipDeleteGraphics,
-    GdipDeletePath, GdipDeletePen, GdipDisposeImage, GdipDrawImageRect, GdipFillPath,
-    GdipFillRectangle, GdipGetPenBrushFill, GdipSetInterpolationMode, GdipSetSmoothingMode,
-    GdiplusShutdown, GdiplusStartup, GdiplusStartupInput, GpBitmap, GpBrush, GpGraphics, GpImage,
-    GpPath, GpPen, InterpolationModeHighQualityBicubic, SmoothingModeAntiAlias, Unit,
-};
-use windows::Win32::UI::Input::KeyboardAndMouse::SetFocus;
-use windows::Win32::UI::WindowsAndMessaging::{
-    DrawIconEx, GetCursorPos, ShowWindow, UpdateLayeredWindow, DI_NORMAL, SW_HIDE, SW_SHOW,
-    ULW_ALPHA,
-};
-use windows::Win32::{Foundation::HWND, Graphics::Gdi::GetDC};
 
 pub const BG_DARK_COLOR: u32 = 0x4c4c4c;
 pub const FG_DARK_COLOR: u32 = 0x3b3b3b;

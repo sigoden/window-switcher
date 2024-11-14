@@ -1,26 +1,28 @@
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
+use std::{ffi::c_void, mem::size_of, path::PathBuf};
 use windows::core::PWSTR;
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, MAX_PATH, POINT, RECT};
-use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
-use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+use windows::Win32::{
+    Foundation::{BOOL, HWND, LPARAM, MAX_PATH, POINT, RECT},
+    Graphics::{
+        Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED},
+        Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
+    },
+    System::{
+        Console::{AllocConsole, FreeConsole, GetConsoleWindow},
+        LibraryLoader::GetModuleFileNameW,
+        Threading::{
+            OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
+            PROCESS_VM_READ,
+        },
+    },
+    UI::WindowsAndMessaging::{
+        EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
+        GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+        SetForegroundWindow, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_USERDATA, GW_OWNER,
+        SWP_NOZORDER, SW_RESTORE, WINDOWPLACEMENT, WS_EX_TOPMOST,
+    },
 };
-use windows::Win32::System::Console::{AllocConsole, FreeConsole, GetConsoleWindow};
-use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
-use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
-    PROCESS_VM_READ,
-};
-use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
-    GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-    SetForegroundWindow, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_USERDATA, GW_OWNER,
-    SWP_NOZORDER, SW_RESTORE, WINDOWPLACEMENT, WS_EX_TOPMOST,
-};
-
-use std::path::PathBuf;
-use std::{ffi::c_void, mem::size_of};
 
 pub fn is_iconic_window(hwnd: HWND) -> bool {
     unsafe { IsIconic(hwnd) }.as_bool()

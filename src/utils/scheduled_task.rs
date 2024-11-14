@@ -9,13 +9,17 @@ use std::{
     process::Command,
 };
 use windows::core::{Result as WindowsResult, PWSTR};
-use windows::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
-use windows::Win32::Security::Authorization::ConvertSidToStringSidW;
-use windows::Win32::Security::{
-    GetTokenInformation, LookupAccountSidW, TokenUser, SID_NAME_USE, TOKEN_QUERY, TOKEN_USER,
+use windows::Win32::{
+    Foundation::ERROR_INSUFFICIENT_BUFFER,
+    Security::{
+        Authorization::ConvertSidToStringSidW, GetTokenInformation, LookupAccountSidW, TokenUser,
+        SID_NAME_USE, TOKEN_QUERY, TOKEN_USER,
+    },
+    System::{
+        SystemInformation::GetLocalTime,
+        Threading::{GetCurrentProcess, OpenProcessToken, CREATE_NO_WINDOW},
+    },
 };
-use windows::Win32::System::SystemInformation::GetLocalTime;
-use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken, CREATE_NO_WINDOW};
 
 pub fn create_scheduled_task(name: &str, exe_path: &str) -> Result<()> {
     let task_xml_path = create_task_file(name, exe_path)

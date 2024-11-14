@@ -1,17 +1,20 @@
 use crate::app::{IDM_CONFIGURE, IDM_EXIT, IDM_STARTUP, NAME, WM_USER_TRAYICON};
 
 use anyhow::{anyhow, Result};
-use windows::core::w;
-use windows::core::PCWSTR;
-use windows::Win32::Foundation::{HWND, POINT};
-use windows::Win32::UI::Shell::{
-    Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
-    NOTIFYICONDATAW,
-};
-use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreateIconFromResourceEx, CreatePopupMenu, GetCursorPos,
-    LookupIconIdFromDirectoryEx, SetForegroundWindow, TrackPopupMenu, HMENU, LR_DEFAULTCOLOR,
-    MF_CHECKED, MF_STRING, MF_UNCHECKED, TPM_BOTTOMALIGN, TPM_LEFTALIGN,
+use windows::core::{w, PCWSTR};
+use windows::Win32::{
+    Foundation::{HWND, POINT},
+    UI::{
+        Shell::{
+            Shell_NotifyIconW, NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY,
+            NOTIFYICONDATAW,
+        },
+        WindowsAndMessaging::{
+            AppendMenuW, CreateIconFromResourceEx, CreatePopupMenu, GetCursorPos,
+            LookupIconIdFromDirectoryEx, SetForegroundWindow, TrackPopupMenu, HMENU,
+            LR_DEFAULTCOLOR, MF_CHECKED, MF_STRING, MF_UNCHECKED, TPM_BOTTOMALIGN, TPM_LEFTALIGN,
+        },
+    },
 };
 
 const ICON_BYTES: &[u8] = include_bytes!("../assets/icon.ico");

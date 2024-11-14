@@ -1,5 +1,4 @@
-use windows::core::w;
-use windows::core::PCWSTR;
+use windows::core::{w, PCWSTR};
 use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
 
 use crate::utils::to_wstring;

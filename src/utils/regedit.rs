@@ -1,10 +1,12 @@
 use anyhow::{anyhow, bail, Result};
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::ERROR_FILE_NOT_FOUND;
-use windows::Win32::System::Registry::{
-    RegCloseKey, RegDeleteValueW, RegGetValueW, RegOpenKeyExW, RegSetValueExW, HKEY,
-    HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_DWORD_BIG_ENDIAN, REG_SZ, REG_VALUE_TYPE,
-    RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
+use windows::Win32::{
+    Foundation::ERROR_FILE_NOT_FOUND,
+    System::Registry::{
+        RegCloseKey, RegDeleteValueW, RegGetValueW, RegOpenKeyExW, RegSetValueExW, HKEY,
+        HKEY_CURRENT_USER, KEY_ALL_ACCESS, REG_DWORD_BIG_ENDIAN, REG_SZ, REG_VALUE_TYPE,
+        RRF_RT_REG_DWORD, RRF_RT_REG_SZ,
+    },
 };
 
 #[derive(Debug)]

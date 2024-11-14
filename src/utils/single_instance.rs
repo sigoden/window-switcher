@@ -2,8 +2,10 @@ use super::to_wstring;
 
 use anyhow::{anyhow, Result};
 use windows::core::PCWSTR;
-use windows::Win32::Foundation::{CloseHandle, BOOL, ERROR_ALREADY_EXISTS, HANDLE};
-use windows::Win32::System::Threading::{CreateMutexW, ReleaseMutex};
+use windows::Win32::{
+    Foundation::{CloseHandle, BOOL, ERROR_ALREADY_EXISTS, HANDLE},
+    System::Threading::{CreateMutexW, ReleaseMutex},
+};
 
 /// A struct representing one running instance.
 pub struct SingleInstance {

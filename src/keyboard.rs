@@ -8,13 +8,15 @@ use crate::{
 };
 
 use anyhow::{anyhow, Result};
-use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::{
-    Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_ESCAPE, VK_LSHIFT, VK_RSHIFT},
-    WindowsAndMessaging::{
-        CallNextHookEx, SendMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
-        KBDLLHOOKSTRUCT, WH_KEYBOARD_LL,
+use windows::Win32::{
+    Foundation::{HWND, LPARAM, LRESULT, WPARAM},
+    System::LibraryLoader::GetModuleHandleW,
+    UI::{
+        Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_ESCAPE, VK_LSHIFT, VK_RSHIFT},
+        WindowsAndMessaging::{
+            CallNextHookEx, SendMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
+            KBDLLHOOKSTRUCT, WH_KEYBOARD_LL,
+        },
     },
 };
 

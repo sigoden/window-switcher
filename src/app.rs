@@ -12,16 +12,18 @@ use crate::utils::{
 use anyhow::{anyhow, Result};
 use indexmap::IndexSet;
 use std::collections::HashMap;
-use windows::core::w;
-use windows::core::PCWSTR;
-use windows::Win32::Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
-use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowLongPtrW, LoadCursorW,
-    PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW, SetWindowLongPtrW,
-    TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_STYLE, HICON, HTCLIENT, IDC_ARROW,
-    MSG, WINDOW_STYLE, WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP, WM_NCHITTEST, WM_RBUTTONUP,
-    WNDCLASSW, WS_CAPTION, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+use windows::core::{w, PCWSTR};
+use windows::Win32::{
+    Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+    System::LibraryLoader::GetModuleHandleW,
+    UI::WindowsAndMessaging::{
+        CreateWindowExW, DefWindowProcW, DispatchMessageW, GetMessageW, GetWindowLongPtrW,
+        LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW, RegisterWindowMessageW,
+        SetWindowLongPtrW, TranslateMessage, CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_STYLE,
+        HICON, HTCLIENT, IDC_ARROW, MSG, WINDOW_STYLE, WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP,
+        WM_NCHITTEST, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_LAYERED, WS_EX_TOOLWINDOW,
+        WS_EX_TOPMOST,
+    },
 };
 
 pub const NAME: PCWSTR = w!("Window Switcher");

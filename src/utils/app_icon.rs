@@ -12,15 +12,19 @@ use indexmap::IndexMap;
 use windows::{
     core::PCWSTR,
     Win32::{
-        Foundation::{HWND, TRUE, WPARAM},
+        Foundation::{COLORREF, HWND, TRUE, WPARAM},
+        Graphics::Gdi::{
+            CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetObjectW, GetPixel, ReleaseDC,
+            SelectObject, BITMAP, HGDIOBJ,
+        },
         Storage::FileSystem::FILE_ATTRIBUTE_NORMAL,
         UI::{
             Controls::IImageList,
             Shell::{SHGetFileInfoW, SHGetImageList, SHFILEINFOW, SHGFI_SYSICONINDEX},
             WindowsAndMessaging::{
-                CopyIcon, CreateIconFromResourceEx, LoadIconW, LoadImageW, SendMessageW, GCL_HICON,
-                HICON, ICON_BIG, IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LR_DEFAULTSIZE,
-                LR_LOADFROMFILE, WM_GETICON,
+                CopyIcon, CreateIconFromResourceEx, GetIconInfo, LoadIconW, LoadImageW,
+                SendMessageW, GCL_HICON, HICON, ICONINFO, ICON_BIG, IDI_APPLICATION, IMAGE_ICON,
+                LR_DEFAULTCOLOR, LR_DEFAULTSIZE, LR_LOADFROMFILE, WM_GETICON,
             },
         },
     },
@@ -178,10 +182,16 @@ fn get_exe_icon(module_path: &str) -> Option<HICON> {
         let r: ::windows::core::Result<IImageList> = SHGetImageList(0x04);
         match r {
             ::windows::core::Result::Ok(list) => {
-                if let Some(icon) = get_shfileinfo(module_path) {
-                    let r = list.GetIcon(icon.iIcon, 1u32);
+                if let Some(info) = get_shfileinfo(module_path) {
+                    let r = list.GetIcon(info.iIcon, 1u32);
                     match r {
-                        Ok(v) => Some(v),
+                        Ok(hicon) => {
+                            let (x, y) = get_icon_size(hicon)?;
+                            if x < 64 && y < 64 {
+                                return None;
+                            }
+                            Some(hicon)
+                        }
                         Err(_) => None,
                     }
                 } else {
@@ -200,14 +210,13 @@ fn get_shfileinfo(module_path: &str) -> Option<SHFILEINFOW> {
             .chain(std::iter::once(0))
             .collect();
         let mut file_info = SHFILEINFOW::default();
-        let file_info_size = mem::size_of_val(&file_info) as u32;
         for _ in 0..3 {
             // sporadically this method returns 0
             let fff: usize = SHGetFileInfoW(
                 PCWSTR::from_raw(p_path.as_mut_ptr()),
                 FILE_ATTRIBUTE_NORMAL,
                 Some(&mut file_info),
-                file_info_size,
+                mem::size_of_val(&file_info) as u32,
                 SHGFI_SYSICONINDEX,
             );
             if fff != 0 {
@@ -218,5 +227,60 @@ fn get_shfileinfo(module_path: &str) -> Option<SHFILEINFOW> {
             }
         }
         None
+    }
+}
+
+fn get_icon_size(hicon: HICON) -> Option<(i32, i32)> {
+    unsafe {
+        let mut icon_info: ICONINFO = std::mem::zeroed();
+        if GetIconInfo(hicon, &mut icon_info).is_err() {
+            return None;
+        }
+
+        let mut bmp = BITMAP::default();
+        if 0 == GetObjectW(
+            icon_info.hbmColor,
+            std::mem::size_of::<BITMAP>() as i32,
+            Some(&mut bmp as *mut _ as *mut _),
+        ) {
+            let _ = DeleteObject(icon_info.hbmColor);
+            let _ = DeleteObject(icon_info.hbmMask);
+            return None;
+        }
+
+        let (width, height) = (bmp.bmWidth, bmp.bmHeight);
+        let hdc = GetDC(None);
+        let hmemdc = CreateCompatibleDC(hdc);
+        let old_bitmap = SelectObject(hmemdc, HGDIOBJ(icon_info.hbmColor.0 as _));
+
+        let (mut min_x, mut min_y, mut max_x, mut max_y) = (width, height, 0, 0);
+
+        for y in 0..height {
+            for x in 0..width {
+                let pixel = GetPixel(hmemdc, x, y);
+                if pixel != COLORREF(0) {
+                    if x < min_x {
+                        min_x = x;
+                    }
+                    if y < min_y {
+                        min_y = y;
+                    }
+                    if x > max_x {
+                        max_x = x;
+                    }
+                    if y > max_y {
+                        max_y = y;
+                    }
+                }
+            }
+        }
+
+        SelectObject(hmemdc, old_bitmap);
+        let _ = DeleteDC(hmemdc);
+        ReleaseDC(None, hdc);
+        let _ = DeleteObject(icon_info.hbmColor);
+        let _ = DeleteObject(icon_info.hbmMask);
+
+        Some((max_x - min_x + 1, max_y - min_y + 1))
     }
 }

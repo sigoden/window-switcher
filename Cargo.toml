@@ -36,7 +36,7 @@ features = [
 ]
 
 [build-dependencies]
-embed-resource = "2.4.0"
+embed-resource = "3.0.1"
 
 [profile.release]
 lto = true

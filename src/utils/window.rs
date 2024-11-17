@@ -1,25 +1,37 @@
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use std::{ffi::c_void, mem::size_of, path::PathBuf};
-use windows::core::PWSTR;
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, MAX_PATH, POINT, RECT};
-use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL};
-use windows::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+use windows::core::{w, PWSTR};
+use windows::Win32::{
+    Foundation::{BOOL, HWND, LPARAM, MAX_PATH, POINT, RECT},
+    Graphics::{
+        Dwm::{
+            DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_APP, DWM_CLOAKED_INHERITED,
+            DWM_CLOAKED_SHELL,
+        },
+        Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
+    },
+    System::{
+        Console::{AllocConsole, FreeConsole, GetConsoleWindow},
+        LibraryLoader::GetModuleFileNameW,
+        Threading::{
+            OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
+            PROCESS_VM_READ,
+        },
+    },
+    UI::{
+        Controls::STATE_SYSTEM_INVISIBLE,
+        WindowsAndMessaging::{
+            EnumWindows, GetCursorPos, GetForegroundWindow, GetTitleBarInfo, GetWindow,
+            GetWindowLongPtrW, GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId,
+            IsIconic, IsWindowVisible, SetForegroundWindow, SetWindowPos, ShowWindow, GWL_EXSTYLE,
+            GWL_USERDATA, GW_OWNER, SWP_NOZORDER, SW_RESTORE, TITLEBARINFO, WINDOWPLACEMENT,
+            WS_EX_TOPMOST,
+        },
+    },
 };
-use windows::Win32::System::Console::{AllocConsole, FreeConsole, GetConsoleWindow};
-use windows::Win32::System::LibraryLoader::GetModuleFileNameW;
-use windows::Win32::System::Threading::{
-    OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
-    PROCESS_VM_READ,
-};
-use windows::Win32::UI::Controls::STATE_SYSTEM_INVISIBLE;
-use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetCursorPos, GetForegroundWindow, GetTitleBarInfo, GetWindow, GetWindowLongPtrW,
-    GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
-    SetForegroundWindow, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_USERDATA, GW_OWNER,
-    SWP_NOZORDER, SW_RESTORE, TITLEBARINFO, WINDOWPLACEMENT, WS_EX_TOPMOST,
-};
+
+use crate::utils::RegKey;
 
 pub fn is_iconic_window(hwnd: HWND) -> bool {
     unsafe { IsIconic(hwnd) }.as_bool()
@@ -35,7 +47,21 @@ pub fn is_topmost_window(hwnd: HWND) -> bool {
     ex_style & WS_EX_TOPMOST.0 != 0
 }
 
-pub fn is_cloaked_window(hwnd: HWND, all_desktops: bool) -> bool {
+#[derive(Default, Debug, Clone, Copy)]
+pub struct CloakType(pub u32);
+
+impl CloakType {
+    pub const NONE: u32 = 0;
+    pub const APP: u32 = DWM_CLOAKED_APP;
+    pub const SHELL: u32 = DWM_CLOAKED_SHELL;
+    pub const INHERITED: u32 = DWM_CLOAKED_INHERITED;
+
+    fn from_flags(flags: u32) -> Self {
+        Self(flags)
+    }
+}
+
+pub fn get_window_cloak_type(hwnd: HWND) -> CloakType {
     let mut cloaked = 0u32;
     let _ = unsafe {
         DwmGetWindowAttribute(
@@ -46,12 +72,7 @@ pub fn is_cloaked_window(hwnd: HWND, all_desktops: bool) -> bool {
         )
     };
 
-    if all_desktops {
-        // windows may be cloaked by the shell if they are on other virtual desktops
-        cloaked != 0 && cloaked != DWM_CLOAKED_SHELL
-    } else {
-        cloaked != 0
-    }
+    CloakType::from_flags(cloaked)
 }
 
 pub fn is_small_window(hwnd: HWND) -> bool {
@@ -202,10 +223,7 @@ pub fn set_window_user_data(hwnd: HWND, ptr: isize) -> isize {
 ///
 /// Duo to the limitation of `OpenProcess`, this function will not list `Task Manager`
 /// and others which are running as administrator if `Switcher` is not `running as administrator`.
-pub fn list_windows(
-    ignore_minimal: bool,
-    all_desktops: bool,
-) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
+pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
     let mut result: IndexMap<String, Vec<(HWND, String)>> = IndexMap::new();
     let mut hwnds: Vec<HWND> = Default::default();
     unsafe { EnumWindows(Some(enum_window), LPARAM(&mut hwnds as *mut _ as isize)) }
@@ -215,11 +233,29 @@ pub fn list_windows(
     for hwnd in hwnds.iter().cloned() {
         let mut valid = is_visible_window(hwnd)
             && !is_invisible_window(hwnd)
-            && !is_cloaked_window(hwnd, all_desktops)
             && !is_topmost_window(hwnd)
             && !is_small_window(hwnd);
         if valid && ignore_minimal && is_iconic_window(hwnd) {
             valid = false;
+        }
+        if valid {
+            let alt_tab_filter = RegKey::new_hkcu(
+                w!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"),
+                w!("VirtualDesktopAltTabFilter"),
+            )
+            .and_then(|k| k.get_int())
+            .unwrap_or(1);
+
+            let cloak_type = get_window_cloak_type(hwnd);
+            debug!("alt_tab_filter = {alt_tab_filter}, cloak_type={cloak_type:?}");
+
+            valid = if alt_tab_filter == 0 {
+                // Windows from other desktops are cloaked as SHELL
+                cloak_type.0 | CloakType::SHELL == CloakType::SHELL
+            } else {
+                // Don't include any cloaked windows
+                cloak_type.0 == CloakType::NONE
+            }
         }
         if valid {
             let title = get_window_title(hwnd);

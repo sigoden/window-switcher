@@ -23,7 +23,6 @@ pub struct Config {
     pub switch_windows_hotkey: Hotkey,
     pub switch_windows_blacklist: HashSet<String>,
     pub switch_windows_ignore_minimal: bool,
-    pub switch_apps_all_desktops: bool,
     pub switch_apps_enable: bool,
     pub switch_apps_hotkey: Hotkey,
     pub switch_apps_ignore_minimal: bool,
@@ -44,7 +43,6 @@ impl Default for Config {
             .unwrap(),
             switch_windows_blacklist: Default::default(),
             switch_windows_ignore_minimal: false,
-            switch_apps_all_desktops: false,
             switch_apps_enable: false,
             switch_apps_hotkey: Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", "alt + tab")
                 .unwrap(),
@@ -120,9 +118,6 @@ impl Config {
                             .map(|(k, v)| (k.to_lowercase(), v.to_string()))
                     })
                     .collect();
-            }
-            if let Some(v) = section.get("all_desktops").and_then(Config::to_bool) {
-                conf.switch_apps_all_desktops = v;
             }
         }
         Ok(conf)

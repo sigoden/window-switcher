@@ -36,7 +36,17 @@ pub fn is_iconic_window(hwnd: HWND) -> bool {
 
 pub fn is_visible_window(hwnd: HWND) -> bool {
     let ret = unsafe { IsWindowVisible(hwnd) };
-    ret.as_bool()
+    if !ret.as_bool() {
+        return false;
+    }
+
+    // Some "visible" windows are cloaked with `DWM_CLOAKED_SHELL` but always have
+    // this invisible flag set, so this filters out those unusual cases:
+    let mut title_info = TITLEBARINFO::default();
+    title_info.cbSize = std::mem::size_of_val(&title_info) as u32;
+    let _ = unsafe { GetTitleBarInfo(hwnd, &mut title_info) };
+
+    title_info.rgstate[0] & STATE_SYSTEM_INVISIBLE.0 == 0
 }
 
 pub fn is_topmost_window(hwnd: HWND) -> bool {
@@ -198,15 +208,6 @@ pub fn get_window_title(hwnd: HWND) -> String {
     String::from_utf16_lossy(&buf[..len as usize])
 }
 
-/// Some "visible" windows are listed with [`DWM_CLOAKED_SHELL`] but always have
-/// this invisible flag set, so this filters out those additional apps.
-pub fn is_invisible_window(hwnd: HWND) -> bool {
-    let mut title_info = TITLEBARINFO::default();
-    title_info.cbSize = std::mem::size_of_val(&title_info) as u32;
-    let _ = unsafe { GetTitleBarInfo(hwnd, &mut title_info) };
-    title_info.rgstate[0] & STATE_SYSTEM_INVISIBLE.0 != 0
-}
-
 pub fn get_owner_window(hwnd: HWND) -> HWND {
     unsafe { GetWindow(hwnd, GW_OWNER) }.unwrap_or_default()
 }
@@ -247,7 +248,6 @@ pub fn list_windows(
     for hwnd in hwnds.iter().cloned() {
         let mut valid = is_visible_window(hwnd)
             && !is_cloaked_window(hwnd, only_current_desktop)
-            && !is_invisible_window(hwnd)
             && !is_topmost_window(hwnd)
             && !is_small_window(hwnd);
         if valid && ignore_minimal && is_iconic_window(hwnd) {
@@ -255,9 +255,7 @@ pub fn list_windows(
         }
         if valid {
             let title = get_window_title(hwnd);
-            if !title.is_empty() && title != "Program Manager" {
-                valid_hwnds.push((hwnd, title))
-            }
+            valid_hwnds.push((hwnd, title))
         }
         owner_hwnds.push(get_owner_window(hwnd))
     }

@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use window_switcher::utils::*;
 
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+use windows::Win32::Graphics::Dwm::{DWM_CLOAKED_APP, DWM_CLOAKED_INHERITED, DWM_CLOAKED_SHELL};
 use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindow, GW_OWNER};
 
 fn main() -> Result<()> {
@@ -23,7 +24,7 @@ struct WindowInfo {
     size: (usize, usize),
     is_visible: bool,
     is_invisible: bool,
-    cloak_type: CloakType,
+    cloak_type: u32,
     is_iconic: bool,
     is_topmost: bool,
 }
@@ -35,7 +36,7 @@ impl WindowInfo {
             "visible:{}invisible:{}cloak:{}iconic:{}topmost:{} {:>10} {:>10}:{} {}:{}",
             pretty_bool(self.is_visible),
             pretty_bool(self.is_invisible),
-            self.cloak_type.0,
+            pretty_cloak(self.cloak_type),
             pretty_bool(self.is_iconic),
             pretty_bool(self.is_topmost),
             size,
@@ -88,6 +89,16 @@ fn pretty_bool(value: bool) -> String {
         "✓".into()
     } else {
         " ".into()
+    }
+}
+
+fn pretty_cloak(value: u32) -> &'static str {
+    match value {
+        0 => " ",
+        DWM_CLOAKED_SHELL => "S",
+        DWM_CLOAKED_APP => "A",
+        DWM_CLOAKED_INHERITED => "I",
+        _ => "?",
     }
 }
 

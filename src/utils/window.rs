@@ -5,10 +5,7 @@ use windows::core::{w, PWSTR};
 use windows::Win32::{
     Foundation::{BOOL, HWND, LPARAM, MAX_PATH, POINT, RECT},
     Graphics::{
-        Dwm::{
-            DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_APP, DWM_CLOAKED_INHERITED,
-            DWM_CLOAKED_SHELL,
-        },
+        Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL},
         Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
     },
     System::{
@@ -47,32 +44,44 @@ pub fn is_topmost_window(hwnd: HWND) -> bool {
     ex_style & WS_EX_TOPMOST.0 != 0
 }
 
-#[derive(Default, Debug, Clone, Copy)]
-pub struct CloakType(pub u32);
-
-impl CloakType {
-    pub const NONE: u32 = 0;
-    pub const APP: u32 = DWM_CLOAKED_APP;
-    pub const SHELL: u32 = DWM_CLOAKED_SHELL;
-    pub const INHERITED: u32 = DWM_CLOAKED_INHERITED;
-
-    fn from_flags(flags: u32) -> Self {
-        Self(flags)
-    }
-}
-
-pub fn get_window_cloak_type(hwnd: HWND) -> CloakType {
-    let mut cloaked = 0u32;
+pub fn get_window_cloak_type(hwnd: HWND) -> u32 {
+    let mut cloak_type = 0u32;
     let _ = unsafe {
         DwmGetWindowAttribute(
             hwnd,
             DWMWA_CLOAKED,
-            &mut cloaked as *mut u32 as *mut c_void,
+            &mut cloak_type as *mut u32 as *mut c_void,
             size_of::<u32>() as u32,
         )
     };
+    cloak_type
+}
 
-    CloakType::from_flags(cloaked)
+fn is_cloaked_window(hwnd: HWND, only_current_desktop: Option<bool>) -> bool {
+    let only_current_desktop = only_current_desktop.unwrap_or_else(|| {
+        let alt_tab_filter = RegKey::new_hkcu(
+            w!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"),
+            w!("VirtualDesktopAltTabFilter"),
+        )
+        .and_then(|k| k.get_int())
+        .unwrap_or(1);
+
+        trace!("registry configured alt-tab filter: {alt_tab_filter}");
+
+        alt_tab_filter != 0
+    });
+
+    let cloak_type = get_window_cloak_type(hwnd);
+    trace!("only_current_desktop: {only_current_desktop:?}, cloak_type={cloak_type:?}");
+
+    if only_current_desktop {
+        // Any kind of cloaking counts against a window
+        cloak_type != 0
+    } else {
+        // Windows from other desktops will be cloaked as SHELL, so we treat them
+        // as if they are uncloaked. All other cloak types count against the window
+        cloak_type | DWM_CLOAKED_SHELL != DWM_CLOAKED_SHELL
+    }
 }
 
 pub fn is_small_window(hwnd: HWND) -> bool {
@@ -189,6 +198,8 @@ pub fn get_window_title(hwnd: HWND) -> String {
     String::from_utf16_lossy(&buf[..len as usize])
 }
 
+/// Some "visible" windows are listed with [`DWM_CLOAKED_SHELL`] but always have
+/// this invisible flag set, so this filters out those additional apps.
 pub fn is_invisible_window(hwnd: HWND) -> bool {
     let mut title_info = TITLEBARINFO::default();
     title_info.cbSize = std::mem::size_of_val(&title_info) as u32;
@@ -223,7 +234,10 @@ pub fn set_window_user_data(hwnd: HWND, ptr: isize) -> isize {
 ///
 /// Duo to the limitation of `OpenProcess`, this function will not list `Task Manager`
 /// and others which are running as administrator if `Switcher` is not `running as administrator`.
-pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
+pub fn list_windows(
+    ignore_minimal: bool,
+    only_current_desktop: Option<bool>,
+) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
     let mut result: IndexMap<String, Vec<(HWND, String)>> = IndexMap::new();
     let mut hwnds: Vec<HWND> = Default::default();
     unsafe { EnumWindows(Some(enum_window), LPARAM(&mut hwnds as *mut _ as isize)) }
@@ -232,30 +246,12 @@ pub fn list_windows(ignore_minimal: bool) -> Result<IndexMap<String, Vec<(HWND, 
     let mut owner_hwnds = vec![];
     for hwnd in hwnds.iter().cloned() {
         let mut valid = is_visible_window(hwnd)
+            && !is_cloaked_window(hwnd, only_current_desktop)
             && !is_invisible_window(hwnd)
             && !is_topmost_window(hwnd)
             && !is_small_window(hwnd);
         if valid && ignore_minimal && is_iconic_window(hwnd) {
             valid = false;
-        }
-        if valid {
-            let alt_tab_filter = RegKey::new_hkcu(
-                w!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"),
-                w!("VirtualDesktopAltTabFilter"),
-            )
-            .and_then(|k| k.get_int())
-            .unwrap_or(1);
-
-            let cloak_type = get_window_cloak_type(hwnd);
-            debug!("alt_tab_filter = {alt_tab_filter}, cloak_type={cloak_type:?}");
-
-            valid = if alt_tab_filter == 0 {
-                // Windows from other desktops are cloaked as SHELL
-                cloak_type.0 | CloakType::SHELL == CloakType::SHELL
-            } else {
-                // Don't include any cloaked windows
-                cloak_type.0 == CloakType::NONE
-            }
         }
         if valid {
             let title = get_window_title(hwnd);

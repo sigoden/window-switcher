@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use std::{ffi::c_void, mem::size_of, path::PathBuf};
-use windows::core::{w, PWSTR};
+use windows::core::PWSTR;
 use windows::Win32::{
     Foundation::{BOOL, HWND, LPARAM, MAX_PATH, POINT, RECT},
     Graphics::{
@@ -27,8 +27,6 @@ use windows::Win32::{
         },
     },
 };
-
-use crate::utils::RegKey;
 
 pub fn is_iconic_window(hwnd: HWND) -> bool {
     unsafe { IsIconic(hwnd) }.as_bool()
@@ -67,22 +65,8 @@ pub fn get_window_cloak_type(hwnd: HWND) -> u32 {
     cloak_type
 }
 
-fn is_cloaked_window(hwnd: HWND, only_current_desktop: Option<bool>) -> bool {
-    let only_current_desktop = only_current_desktop.unwrap_or_else(|| {
-        let alt_tab_filter = RegKey::new_hkcu(
-            w!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"),
-            w!("VirtualDesktopAltTabFilter"),
-        )
-        .and_then(|k| k.get_int())
-        .unwrap_or(1);
-
-        trace!("registry configured alt-tab filter: {alt_tab_filter}");
-
-        alt_tab_filter != 0
-    });
-
+fn is_cloaked_window(hwnd: HWND, only_current_desktop: bool) -> bool {
     let cloak_type = get_window_cloak_type(hwnd);
-    trace!("only_current_desktop: {only_current_desktop:?}, cloak_type={cloak_type:?}");
 
     if only_current_desktop {
         // Any kind of cloaking counts against a window
@@ -237,7 +221,7 @@ pub fn set_window_user_data(hwnd: HWND, ptr: isize) -> isize {
 /// and others which are running as administrator if `Switcher` is not `running as administrator`.
 pub fn list_windows(
     ignore_minimal: bool,
-    only_current_desktop: Option<bool>,
+    only_current_desktop: bool,
 ) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
     let mut result: IndexMap<String, Vec<(HWND, String)>> = IndexMap::new();
     let mut hwnds: Vec<HWND> = Default::default();
@@ -255,7 +239,9 @@ pub fn list_windows(
         }
         if valid {
             let title = get_window_title(hwnd);
-            valid_hwnds.push((hwnd, title))
+            if !title.is_empty() {
+                valid_hwnds.push((hwnd, title));
+            }
         }
         owner_hwnds.push(get_owner_window(hwnd))
     }

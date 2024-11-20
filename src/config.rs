@@ -4,11 +4,12 @@ use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use ini::{Ini, ParseOption};
 use log::LevelFilter;
+use windows::core::w;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     VIRTUAL_KEY, VK_LCONTROL, VK_LMENU, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RWIN,
 };
 
-use crate::utils::get_exe_folder;
+use crate::utils::{get_exe_folder, RegKey};
 
 pub const SWITCH_WINDOWS_HOTKEY_ID: u32 = 1;
 pub const SWITCH_APPS_HOTKEY_ID: u32 = 2;
@@ -23,12 +24,12 @@ pub struct Config {
     pub switch_windows_hotkey: Hotkey,
     pub switch_windows_blacklist: HashSet<String>,
     pub switch_windows_ignore_minimal: bool,
-    pub switch_windows_only_current_desktop: Option<bool>,
+    switch_windows_only_current_desktop: Option<bool>,
     pub switch_apps_enable: bool,
     pub switch_apps_hotkey: Hotkey,
     pub switch_apps_ignore_minimal: bool,
     pub switch_apps_override_icons: IndexMap<String, String>,
-    pub switch_apps_only_current_desktop: Option<bool>,
+    switch_apps_only_current_desktop: Option<bool>,
 }
 
 impl Default for Config {
@@ -154,6 +155,33 @@ impl Config {
             "no" | "false" | "off" | "0" => Some(false),
             _ => None,
         }
+    }
+
+    /// Whether the user has configured app switching to include other desktops.
+    /// If the configured value is not a valid bool, the Windows registry will be
+    /// used as a fallback.
+    pub fn switch_apps_only_current_desktop(&self) -> bool {
+        self.switch_apps_only_current_desktop
+            .unwrap_or_else(Self::system_switcher_only_current_desktop)
+    }
+
+    /// Whether the user has configured window switching to include other desktops.
+    /// If the configured value is not a valid bool, the Windows registry will be
+    /// used as a fallback.
+    pub fn switch_windows_only_current_desktop(&self) -> bool {
+        self.switch_windows_only_current_desktop
+            .unwrap_or_else(Self::system_switcher_only_current_desktop)
+    }
+
+    fn system_switcher_only_current_desktop() -> bool {
+        let alt_tab_filter = RegKey::new_hkcu(
+            w!(r"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"),
+            w!("VirtualDesktopAltTabFilter"),
+        )
+        .and_then(|k| k.get_int())
+        .unwrap_or(1);
+
+        alt_tab_filter != 0
     }
 }
 

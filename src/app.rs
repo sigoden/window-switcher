@@ -298,7 +298,7 @@ impl App {
     fn switch_windows(&mut self, hwnd: HWND, reverse: bool) -> Result<bool> {
         let windows = list_windows(
             self.config.switch_windows_ignore_minimal,
-            self.config.switch_windows_only_current_desktop,
+            self.config.switch_windows_only_current_desktop(),
         )?;
         debug!(
             "switch windows: hwnd:{hwnd:?} reverse:{reverse} state:{:?}",
@@ -399,7 +399,7 @@ impl App {
         }
         let windows = list_windows(
             self.config.switch_apps_ignore_minimal,
-            self.config.switch_apps_only_current_desktop,
+            self.config.switch_apps_only_current_desktop(),
         )?;
         let mut apps = vec![];
         for (module_path, hwnds) in windows.iter() {

@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use window_switcher::utils::*;
 
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+use windows::Win32::Graphics::Dwm::{DWM_CLOAKED_APP, DWM_CLOAKED_INHERITED, DWM_CLOAKED_SHELL};
 use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindow, GW_OWNER};
 
 fn main() -> Result<()> {
@@ -22,7 +23,7 @@ struct WindowInfo {
     owner_title: String,
     size: (usize, usize),
     is_visible: bool,
-    is_cloaked: bool,
+    cloak_type: u32,
     is_iconic: bool,
     is_topmost: bool,
 }
@@ -31,9 +32,9 @@ impl WindowInfo {
     pub fn stringify(&self) -> String {
         let size = format!("{}x{}", self.size.0, self.size.1);
         format!(
-            "visible:{}cloacked{}iconic{}topmost:{} {:>10} {:>10}:{} {}:{}",
+            "visible:{}cloak:{}iconic:{}topmost:{} {:>10} {:>10}:{} {}:{}",
             pretty_bool(self.is_visible),
-            pretty_bool(self.is_cloaked),
+            pretty_cloak(self.cloak_type),
             pretty_bool(self.is_iconic),
             pretty_bool(self.is_topmost),
             size,
@@ -52,7 +53,7 @@ fn collect_windows_info() -> anyhow::Result<Vec<WindowInfo>> {
     let mut output = vec![];
     for hwnd in hwnds {
         let title = get_window_title(hwnd);
-        let is_cloaked = is_cloaked_window(hwnd);
+        let cloak_type = get_window_cloak_type(hwnd);
         let is_iconic = is_iconic_window(hwnd);
         let is_topmost = is_topmost_window(hwnd);
         let is_visible = is_visible_window(hwnd);
@@ -70,7 +71,7 @@ fn collect_windows_info() -> anyhow::Result<Vec<WindowInfo>> {
             owner_title,
             size: (width as usize, height as usize),
             is_visible,
-            is_cloaked,
+            cloak_type,
             is_iconic,
             is_topmost,
         };
@@ -84,6 +85,16 @@ fn pretty_bool(value: bool) -> String {
         "✓".into()
     } else {
         " ".into()
+    }
+}
+
+fn pretty_cloak(value: u32) -> &'static str {
+    match value {
+        0 => " ",
+        DWM_CLOAKED_SHELL => "S",
+        DWM_CLOAKED_APP => "A",
+        DWM_CLOAKED_INHERITED => "I",
+        _ => "?",
     }
 }
 

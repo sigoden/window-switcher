@@ -8,6 +8,8 @@ use crate::{
 };
 
 use anyhow::{anyhow, Result};
+use parking_lot::Mutex;
+use std::sync::LazyLock;
 use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
@@ -20,7 +22,7 @@ use windows::Win32::{
     },
 };
 
-static mut KEYBOARD_STATE: Vec<HotKeyState> = vec![];
+static KEYBOARD_STATE: LazyLock<Mutex<Vec<HotKeyState>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 static mut WINDOW: HWND = HWND(0 as _);
 static mut IS_SHIFT_PRESSED: bool = false;
 static mut PREVIOUS_KEYCODE: u16 = 0;
@@ -33,6 +35,16 @@ pub struct KeyboardListener {
 impl KeyboardListener {
     pub fn init(hwnd: HWND, hotkeys: &[&Hotkey]) -> Result<Self> {
         unsafe { WINDOW = hwnd }
+
+        let keyboard_state = hotkeys
+            .iter()
+            .map(|hotkey| HotKeyState {
+                hotkey: (*hotkey).clone(),
+                is_modifier_pressed: false,
+            })
+            .collect();
+        *KEYBOARD_STATE.lock() = keyboard_state;
+
         let hook = unsafe {
             let hinstance = { GetModuleHandleW(None) }
                 .map_err(|err| anyhow!("Failed to get module handle, {err}"))?;
@@ -40,15 +52,6 @@ impl KeyboardListener {
         }
         .map_err(|err| anyhow!("Failed to set windows hook, {err}"))?;
         info!("keyboard listener start");
-        unsafe {
-            KEYBOARD_STATE = hotkeys
-                .iter()
-                .map(|hotkey| HotKeyState {
-                    hotkey: (*hotkey).clone(),
-                    is_modifier_pressed: false,
-                })
-                .collect()
-        }
 
         Ok(Self { hook })
     }
@@ -78,7 +81,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
     if [VK_LSHIFT, VK_RSHIFT].contains(&vk_code) {
         IS_SHIFT_PRESSED = is_key_pressed();
     }
-    for state in KEYBOARD_STATE.iter_mut() {
+    for state in KEYBOARD_STATE.lock().iter_mut() {
         if state.hotkey.modifier.contains(&vk_code) {
             is_modifier = true;
             if is_key_pressed() {
@@ -101,7 +104,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
         }
     }
     if !is_modifier {
-        for state in KEYBOARD_STATE.iter_mut() {
+        for state in KEYBOARD_STATE.lock().iter_mut() {
             if is_key_pressed() && state.is_modifier_pressed {
                 let id = state.hotkey.id;
                 if vk_code.0 == state.hotkey.code {

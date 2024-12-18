@@ -76,6 +76,7 @@ unsafe extern "system" fn win_event_proc(
         Some(v) => v.to_lowercase(),
         None => return,
     };
-    IS_FOREGROUND_IN_BLACKLIST = BLACKLIST.get().unwrap().contains(&exe);
-    debug!("foreground {exe} {IS_FOREGROUND_IN_BLACKLIST}");
+    let is_in_blacklist = BLACKLIST.get().unwrap().contains(&exe);
+    IS_FOREGROUND_IN_BLACKLIST = is_in_blacklist;
+    debug!("foreground {exe} {is_in_blacklist}");
 }

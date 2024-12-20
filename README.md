@@ -47,6 +47,9 @@ blacklist =
 # Ignore minimal windows
 ignore_minimal = no
 
+# Only switch within the current virtual desktops: yes/no/auto
+only_current_desktop = auto
+
 [switch-apps]
 
 # Whether to enable switching apps
@@ -57,16 +60,16 @@ hotkey = alt+tab
 
 # Ignore minimal windows
 ignore_minimal = no
+
+# Only switch apps within the current virtual desktops: yes/no/auto
+only_current_desktop = auto
 ```
 
 ## Running as Administrator (Optional)
 
-While not mandatory, running `window-switcher.exe` with administrator privileges unlocks its full potential, especially when working with system applications like Task Manager that require elevated permissions. This allows for smoother interactions with all types of applications.
+The window-switcher works in standard user mode. But only the window-switcher running in administrator mode can manage applications running in administrator mode.
 
-**Administrator Privileges and Startup Option:**
-
-* **Running as Admin + Enabling Startup:** Launches `window-switcher.exe` with administrator privileges every time you start your computer.
-* **Running without Admin + Enabling Startup:** Launches `window-switcher.exe` with regular user privileges at startup.
+**Important:** If you enable the startup option while running in standard user mode, it will launch in standard mode upon system reboot. To ensure startup with admin privileges, launch the window-switcher as administrator first before enabling startup.
 
 <details>
 <summary>

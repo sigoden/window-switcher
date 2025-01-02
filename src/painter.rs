@@ -46,7 +46,6 @@ pub struct GdiAAPainter {
     hwnd: HWND,
     hdc_screen: HDC,
     rounded_corner: bool,
-    light: bool,
     show: bool,
 }
 
@@ -62,14 +61,12 @@ impl GdiAAPainter {
 
         let hdc_screen = unsafe { GetDC(hwnd) };
         let rounded_corner = is_win11();
-        let light = is_light_theme();
 
         Ok(Self {
             token,
             hwnd,
             hdc_screen,
             rounded_corner,
-            light,
             show: false,
         })
     }
@@ -93,7 +90,7 @@ impl GdiAAPainter {
         let hwnd = self.hwnd;
         let hdc_screen = self.hdc_screen;
 
-        let (fg_color, bg_color) = theme_color(self.light);
+        let (fg_color, bg_color) = theme_color(is_light_theme());
 
         unsafe {
             let hdc_mem = CreateCompatibleDC(hdc_screen);

@@ -5,9 +5,6 @@ use indexmap::IndexMap;
 use ini::{Ini, ParseOption};
 use log::LevelFilter;
 use windows::core::w;
-use windows::Win32::UI::Input::KeyboardAndMouse::{
-    VIRTUAL_KEY, VK_LCONTROL, VK_LMENU, VK_LWIN, VK_RCONTROL, VK_RMENU, VK_RWIN,
-};
 
 use crate::utils::{get_exe_folder, RegKey};
 
@@ -189,8 +186,8 @@ impl Config {
 pub struct Hotkey {
     pub id: u32,
     pub name: String,
-    pub modifier: [VIRTUAL_KEY; 2],
-    pub code: u16,
+    pub modifier: [u32; 2],
+    pub code: u32,
 }
 
 impl Hotkey {
@@ -205,123 +202,69 @@ impl Hotkey {
         })
     }
 
-    pub fn get_modifier(&self) -> u16 {
-        self.modifier[0].0
+    pub fn get_modifier(&self) -> u32 {
+        self.modifier[0]
     }
 
-    pub fn parse(value: &str) -> Option<([VIRTUAL_KEY; 2], u16)> {
-        let value = value.to_ascii_lowercase().replace(' ', "");
+    pub fn parse(value: &str) -> Option<([u32; 2], u32)> {
+        let value = value
+            .to_ascii_lowercase()
+            .replace(' ', "")
+            .replace("vk_", "");
         let keys: Vec<&str> = value.split('+').collect();
         if keys.len() != 2 {
             return None;
         }
         let modifier = match keys[0] {
-            "win" => [VK_LWIN, VK_RWIN],
-            "alt" => [VK_LMENU, VK_RMENU],
-            "ctrl" => [VK_LCONTROL, VK_RCONTROL],
+            "win" => [0xe05b, 0xe05c],
+            "alt" => [0x38, 0xe038],
+            "ctrl" => [0x1d, 0xe01d],
             _ => {
                 return None;
             }
         };
+        // see <https://kbdlayout.info/kbdus/overview+scancodes>
         let code = match keys[1] {
-            "backspace" => 0x08,
-            "tab" => 0x09,
-            "clear" => 0x0c,
-            "enter" => 0x0d,
-            "pause" => 0x13,
-            "capslock" => 0x14,
-            "escape" => 0x1b,
-            "space" => 0x20,
-            "pageup" => 0x21,
-            "pagedown" => 0x22,
-            "end" => 0x23,
-            "home" => 0x24,
-            "left" => 0x25,
-            "up" => 0x26,
-            "right" => 0x27,
-            "down" => 0x28,
-            "select" => 0x29,
-            "print" => 0x2a,
-            "printscreen" => 0x2c,
-            "insert" => 0x2d,
-            "delete" => 0x2e,
-
-            "0" => 0x30,
-            "1" => 0x31,
-            "2" => 0x32,
-            "3" => 0x33,
-            "4" => 0x34,
-            "5" => 0x35,
-            "6" => 0x36,
-            "7" => 0x37,
-            "8" => 0x38,
-            "9" => 0x39,
-            "a" => 0x41,
-            "b" => 0x42,
-            "c" => 0x43,
-            "d" => 0x44,
-            "e" => 0x45,
-            "f" => 0x46,
-            "g" => 0x47,
-            "h" => 0x48,
-            "i" => 0x49,
-            "j" => 0x4a,
-            "k" => 0x4b,
-            "l" => 0x4c,
-            "m" => 0x4d,
-            "n" => 0x4e,
-            "o" => 0x4f,
-            "p" => 0x50,
-            "q" => 0x51,
-            "r" => 0x52,
-            "s" => 0x53,
-            "t" => 0x54,
-            "u" => 0x55,
-            "v" => 0x56,
-            "w" => 0x57,
-            "x" => 0x58,
-            "y" => 0x59,
-            "z" => 0x5a,
-
-            "f1" => 0x70,
-            "f2" => 0x71,
-            "f3" => 0x72,
-            "f4" => 0x73,
-            "f5" => 0x74,
-            "f6" => 0x75,
-            "f7" => 0x76,
-            "f8" => 0x77,
-            "f9" => 0x78,
-            "f10" => 0x79,
-            "f11" => 0x7a,
-            "f12" => 0x7b,
-            "numlock" => 0x90,
-            "scrolllock" => 0x91,
-
-            ":" | ";" | "vk_oem_1" => 0xba,
-            "+" | "=" | "vk_oem_plus" => 0xbb,
-            "<" | "," | "vk_oem_comma" => 0xbc,
-            "-" | "_" | "vk_oem_minus" => 0xbd,
-            ">" | "." | "vk_oem_period" => 0xbe,
-            "?" | "/" | "vk_oem_2" => 0xbf,
-            "~" | "`" | "vk_oem_3" => 0xc0,
-            "{" | "[" | "vk_oem_4" => 0xdb,
-            "|" | "\\" | "vk_oem_5" => 0xdc,
-            "}" | "]" | "vk_oem_6" => 0xdd,
-            "\"" | "'" | "vk_oem_7" => 0xde,
-            "§" | "!" | "vk_oem_8" => 0xdf,
-            "vk_oem_102" => 0xe2,
-            "vk_processkey" => 0xe5,
-            "vk_packet" => 0xe7,
-            "vk_attn" => 0xf6,
-            "vk_crsel" => 0xf7,
-            "vk_exsel" => 0xf8,
-            "vk_ereof" => 0xf9,
-            "vk_play" => 0xfa,
-            "vk_zoom" => 0xfb,
-            "vk_noname" => 0xfc,
-            "vk_pa1" => 0xfd,
-            "vk_oem_clear" => 0xfe,
+            "-" | "_" | "oem_minus" => 0x0c,
+            "+" | "=" | "oem_plus" => 0x0d,
+            "bs" | "backspace" => 0x0e,
+            "tab" => 0x0f,
+            "{" | "[" | "oem_4" => 0x1a,
+            "}" | "]" | "oem_6" => 0x1b,
+            ":" | ";" | "oem_1" => 0x27,
+            "\"" | "'" | "oem_7" => 0x28,
+            "~" | "`" | "oem_3" => 0x29,
+            "|" | "\\" | "oem_5" => 0x2b,
+            "<" | "," | "oem_comma" => 0x33,
+            ">" | "." | "oem_period" => 0x34,
+            "?" | "/" | "oem_2" => 0x35,
+            "capslock" => 0x3a,
+            "f1" => 0x3b,
+            "f2" => 0x3c,
+            "f3" => 0x3d,
+            "f4" => 0x3e,
+            "f5" => 0x3f,
+            "f6" => 0x40,
+            "f7" => 0x41,
+            "f8" => 0x42,
+            "f9" => 0x43,
+            "f10" => 0x44,
+            "scrolllock" => 0x46,
+            "prtsc" | "printscreen" => 0x54,
+            "oem_102" => 0x56,
+            "f11" => 0x57,
+            "f12" => 0x58,
+            "home" => 0xe047,
+            "up" => 0xe048,
+            "pageup" => 0xe049,
+            "left" => 0xe04b,
+            "right" => 0xe04d,
+            "end" => 0xe04f,
+            "down" => 0xe050,
+            "pagedown" => 0xe051,
+            "insert" => 0xe052,
+            "delete" => 0xe053,
+            "menu" => 0xe05d,
             _ => return None,
         };
         Some((modifier, code))
@@ -381,10 +324,7 @@ mod tests {
 
     #[test]
     fn test_hotkey() {
-        assert_eq!(Hotkey::parse("alt + `"), Some(([VK_LMENU, VK_RMENU], 0xc0)));
-        assert_eq!(
-            Hotkey::parse("alt + tab"),
-            Some(([VK_LMENU, VK_RMENU], 0x09))
-        );
+        assert_eq!(Hotkey::parse("alt + `"), Some(([0x38, 0xe038], 0x29)));
+        assert_eq!(Hotkey::parse("alt + tab"), Some(([0x38, 0xe038], 0x0f)));
     }
 }

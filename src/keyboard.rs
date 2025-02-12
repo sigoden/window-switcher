@@ -14,7 +14,7 @@ use windows::Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
     UI::{
-        Input::KeyboardAndMouse::{VIRTUAL_KEY, VK_ESCAPE, VK_LSHIFT, VK_RSHIFT},
+        Input::KeyboardAndMouse::{SCANCODE_LSHIFT, SCANCODE_RSHIFT},
         WindowsAndMessaging::{
             CallNextHookEx, SendMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
             KBDLLHOOKSTRUCT, WH_KEYBOARD_LL,
@@ -25,7 +25,7 @@ use windows::Win32::{
 static KEYBOARD_STATE: LazyLock<Mutex<Vec<HotKeyState>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 static mut WINDOW: HWND = HWND(0 as _);
 static mut IS_SHIFT_PRESSED: bool = false;
-static mut PREVIOUS_KEYCODE: u16 = 0;
+static mut PREVIOUS_KEYCODE: u32 = 0;
 
 #[derive(Debug)]
 pub struct KeyboardListener {
@@ -75,14 +75,18 @@ struct HotKeyState {
 unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     let kbd_data: &KBDLLHOOKSTRUCT = &*(l_param.0 as *const _);
     debug!("keyboard {kbd_data:?}");
-    let vk_code = VIRTUAL_KEY(kbd_data.vkCode as _);
     let mut is_modifier = false;
+    let scan_code = if kbd_data.flags.0 & 1 == 0 {
+        kbd_data.scanCode
+    } else {
+        kbd_data.scanCode | 0xe000
+    };
     let is_key_pressed = || kbd_data.flags.0 & 128 == 0;
-    if [VK_LSHIFT, VK_RSHIFT].contains(&vk_code) {
+    if [SCANCODE_LSHIFT, SCANCODE_RSHIFT].contains(&scan_code) {
         IS_SHIFT_PRESSED = is_key_pressed();
     }
     for state in KEYBOARD_STATE.lock().iter_mut() {
-        if state.hotkey.modifier.contains(&vk_code) {
+        if state.hotkey.modifier.contains(&scan_code) {
             is_modifier = true;
             if is_key_pressed() {
                 state.is_modifier_pressed = true;
@@ -107,26 +111,26 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
         for state in KEYBOARD_STATE.lock().iter_mut() {
             if is_key_pressed() && state.is_modifier_pressed {
                 let id = state.hotkey.id;
-                if vk_code.0 == state.hotkey.code {
+                if scan_code == state.hotkey.code {
                     let reverse = if IS_SHIFT_PRESSED { 1 } else { 0 };
                     if id == SWITCH_APPS_HOTKEY_ID {
                         unsafe {
                             SendMessageW(WINDOW, WM_USER_SWITCH_APPS, WPARAM(0), LPARAM(reverse))
                         };
-                        PREVIOUS_KEYCODE = vk_code.0;
+                        PREVIOUS_KEYCODE = scan_code;
                         return LRESULT(1);
                     } else if id == SWITCH_WINDOWS_HOTKEY_ID && !IS_FOREGROUND_IN_BLACKLIST {
                         unsafe {
                             SendMessageW(WINDOW, WM_USER_SWITCH_WINDOWS, WPARAM(0), LPARAM(reverse))
                         };
-                        PREVIOUS_KEYCODE = vk_code.0;
+                        PREVIOUS_KEYCODE = scan_code;
                         return LRESULT(1);
                     }
-                } else if vk_code == VK_ESCAPE && id == SWITCH_APPS_HOTKEY_ID {
+                } else if scan_code == 0x01 && id == SWITCH_APPS_HOTKEY_ID {
                     unsafe {
                         SendMessageW(WINDOW, WM_USER_SWITCH_APPS_CANCEL, WPARAM(0), LPARAM(0))
                     };
-                    PREVIOUS_KEYCODE = vk_code.0;
+                    PREVIOUS_KEYCODE = scan_code;
                     return LRESULT(1);
                 }
             }

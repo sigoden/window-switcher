@@ -71,35 +71,6 @@ The window-switcher works in standard user mode. But only the window-switcher ru
 
 **Important:** If you enable the startup option while running in standard user mode, it will launch in standard mode upon system reboot. To ensure startup with admin privileges, launch the window-switcher as administrator first before enabling startup.
 
-<details>
-<summary>
-
-## Hotkeys for non-English keyboard layouts
-
-When using non-English keyboard layouts, standard keycodes might not match the expected keys, leading to functionality issues with hotkeys. To ensure your hotkeys work correctly, follow these guidelines:
-
-</summary>
-
-1. **Visit kbdlayout.info**: Go to [http://kbdlayout.info/shortcut](http://kbdlayout.info/shortcut) and select your keyboard layout and desired keys. This will provide an image and detailed mapping.
-
-![kbdlayout](https://github.com/user-attachments/assets/311c452a-d725-4853-adfe-097f63caf21a)
-
-2. **Keycode Mapping**: Use the keycodes provided to correctly map your hotkeys. Here are some standard keycodes:
-
-https://github.com/sigoden/window-switcher/blob/55f00463318971fca79204fe7a4eb9592f659881/src/config.rs#L227-L324
-
-3. **Customizing for Language-Specific Keyboards**:
-
-   - If your keyboard is in a language other than English, such as German, you may need to adjust the hotkeys. For example:
-     - Original hotkey: ``` alt+` ```
-     - Adjusted hotkey: `alt+|` or `alt+vk_oem_5`
-
-4. **Test Your Hotkey Setup**: After configuring, test the hotkeys to ensure they perform the intended actions across different keyboard layouts.
-
-By following these steps, you can adapt hotkeys for various non-English keyboard layouts, ensuring smooth functionality regardless of the language or region of your keyboard. 
-
-</details>
-
 ## License
 
 Copyright (c) 2023-2024 window-switcher developers.

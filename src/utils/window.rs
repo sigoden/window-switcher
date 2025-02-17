@@ -16,40 +16,28 @@ use windows::Win32::{
             PROCESS_VM_READ,
         },
     },
-    UI::{
-        Controls::STATE_SYSTEM_INVISIBLE,
-        WindowsAndMessaging::{
-            EnumWindows, GetCursorPos, GetForegroundWindow, GetTitleBarInfo, GetWindow,
-            GetWindowLongPtrW, GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId,
-            IsIconic, IsWindowVisible, SetForegroundWindow, SetWindowPos, ShowWindow, GWL_EXSTYLE,
-            GWL_USERDATA, GW_OWNER, SWP_NOZORDER, SW_RESTORE, TITLEBARINFO, WINDOWPLACEMENT,
-            WS_EX_TOPMOST,
-        },
+    UI::WindowsAndMessaging::{
+        EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
+        GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
+        SetForegroundWindow, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, GWL_USERDATA,
+        GW_OWNER, SWP_NOZORDER, SW_RESTORE, WINDOWPLACEMENT, WS_EX_TOOLWINDOW, WS_ICONIC,
+        WS_VISIBLE,
     },
 };
 
+pub fn get_window_state(hwnd: HWND) -> (bool, bool, bool) {
+    let style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32;
+    let exstyle = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
+
+    let is_visible = style & WS_VISIBLE.0 != 0;
+    let is_iconic = style & WS_ICONIC.0 != 0;
+    let is_tool = exstyle & WS_EX_TOOLWINDOW.0 != 0;
+
+    (is_visible, is_iconic, is_tool)
+}
+
 pub fn is_iconic_window(hwnd: HWND) -> bool {
     unsafe { IsIconic(hwnd) }.as_bool()
-}
-
-pub fn is_visible_window(hwnd: HWND) -> bool {
-    let ret = unsafe { IsWindowVisible(hwnd) };
-    if !ret.as_bool() {
-        return false;
-    }
-
-    // Some "visible" windows are cloaked with `DWM_CLOAKED_SHELL` but always have
-    // this invisible flag set, so this filters out those unusual cases:
-    let mut title_info = TITLEBARINFO::default();
-    title_info.cbSize = std::mem::size_of_val(&title_info) as u32;
-    let _ = unsafe { GetTitleBarInfo(hwnd, &mut title_info) };
-
-    title_info.rgstate[0] & STATE_SYSTEM_INVISIBLE.0 == 0
-}
-
-pub fn is_topmost_window(hwnd: HWND) -> bool {
-    let ex_style = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
-    ex_style & WS_EX_TOPMOST.0 != 0
 }
 
 pub fn get_window_cloak_type(hwnd: HWND) -> u32 {
@@ -200,6 +188,7 @@ pub fn get_owner_window(hwnd: HWND) -> HWND {
 pub fn get_window_user_data(hwnd: HWND) -> i32 {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowLongW(hwnd, GWL_USERDATA) }
 }
+
 #[cfg(not(target_arch = "x86"))]
 pub fn get_window_user_data(hwnd: HWND) -> isize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(hwnd, GWL_USERDATA) }
@@ -230,16 +219,15 @@ pub fn list_windows(
     let mut valid_hwnds = vec![];
     let mut owner_hwnds = vec![];
     for hwnd in hwnds.iter().cloned() {
-        let mut valid = is_visible_window(hwnd)
+        let (is_visible, is_iconic, is_tool) = get_window_state(hwnd);
+        let ok = is_visible
+            && (if ignore_minimal { !is_iconic } else { true })
+            && !is_tool
             && !is_cloaked_window(hwnd, only_current_desktop)
-            && !is_topmost_window(hwnd)
             && !is_small_window(hwnd);
-        if valid && ignore_minimal && is_iconic_window(hwnd) {
-            valid = false;
-        }
-        if valid {
+        if ok {
             let title = get_window_title(hwnd);
-            if !title.is_empty() {
+            if !title.is_empty() && title != "Windows Input Experience" {
                 valid_hwnds.push((hwnd, title));
             }
         }

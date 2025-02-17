@@ -73,7 +73,7 @@ The window-switcher works in standard user mode. But only the window-switcher ru
 
 ## License
 
-Copyright (c) 2023-2024 window-switcher developers.
+Copyright (c) 2023-2025 window-switcher developers.
 
 window-switcher is made available under the terms of the MIT License, at your option.
 

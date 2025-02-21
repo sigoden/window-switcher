@@ -17,7 +17,7 @@ use windows::Win32::{
         Input::KeyboardAndMouse::{SCANCODE_LSHIFT, SCANCODE_RSHIFT},
         WindowsAndMessaging::{
             CallNextHookEx, SendMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
-            KBDLLHOOKSTRUCT, WH_KEYBOARD_LL,
+            KBDLLHOOKSTRUCT, LLKHF_UP, WH_KEYBOARD_LL,
         },
     },
 };
@@ -76,12 +76,8 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
     let kbd_data: &KBDLLHOOKSTRUCT = &*(l_param.0 as *const _);
     debug!("keyboard {kbd_data:?}");
     let mut is_modifier = false;
-    let scan_code = if kbd_data.flags.0 & 1 == 0 {
-        kbd_data.scanCode
-    } else {
-        kbd_data.scanCode | 0xe000
-    };
-    let is_key_pressed = || kbd_data.flags.0 & 128 == 0;
+    let scan_code = kbd_data.scanCode;
+    let is_key_pressed = || kbd_data.flags.0 & LLKHF_UP.0 == 0;
     if [SCANCODE_LSHIFT, SCANCODE_RSHIFT].contains(&scan_code) {
         IS_SHIFT_PRESSED = is_key_pressed();
     }

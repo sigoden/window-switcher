@@ -216,9 +216,9 @@ impl Hotkey {
             return None;
         }
         let modifier = match keys[0] {
-            "win" => [0xe05b, 0xe05c],
-            "alt" => [0x38, 0xe038],
-            "ctrl" => [0x1d, 0xe01d],
+            "win" => [0x5b, 0x5c],
+            "alt" => [0x38, 0x38],
+            "ctrl" => [0x1d, 0x1d],
             _ => {
                 return None;
             }
@@ -254,17 +254,17 @@ impl Hotkey {
             "oem_102" => 0x56,
             "f11" => 0x57,
             "f12" => 0x58,
-            "home" => 0xe047,
-            "up" => 0xe048,
-            "pageup" => 0xe049,
-            "left" => 0xe04b,
-            "right" => 0xe04d,
-            "end" => 0xe04f,
-            "down" => 0xe050,
-            "pagedown" => 0xe051,
-            "insert" => 0xe052,
-            "delete" => 0xe053,
-            "menu" => 0xe05d,
+            "home" => 0x47,
+            "up" => 0x48,
+            "pageup" => 0x49,
+            "left" => 0x4b,
+            "right" => 0x4d,
+            "end" => 0x4f,
+            "down" => 0x50,
+            "pagedown" => 0x51,
+            "insert" => 0x52,
+            "delete" => 0x53,
+            "menu" => 0x5d,
             _ => return None,
         };
         Some((modifier, code))
@@ -324,7 +324,7 @@ mod tests {
 
     #[test]
     fn test_hotkey() {
-        assert_eq!(Hotkey::parse("alt + `"), Some(([0x38, 0xe038], 0x29)));
-        assert_eq!(Hotkey::parse("alt + tab"), Some(([0x38, 0xe038], 0x0f)));
+        assert_eq!(Hotkey::parse("alt + `"), Some(([0x38, 0x38], 0x29)));
+        assert_eq!(Hotkey::parse("alt + tab"), Some(([0x38, 0x38], 0x0f)));
     }
 }

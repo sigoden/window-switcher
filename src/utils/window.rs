@@ -235,35 +235,27 @@ pub fn list_windows(
         owner_hwnds.push(get_owner_window(hwnd))
     }
     for (hwnd, title) in valid_hwnds.into_iter() {
-        let mut rs_module_path = "".to_string();
-        if let Some(module_path) = get_module_path(get_window_pid(hwnd)) {
-            rs_module_path = module_path;
+        let mut module_path = "".to_string();
+        if let Some(v) = get_module_path(get_window_pid(hwnd)) {
+            module_path = v;
         }
-        if !rs_module_path.is_empty()
-            && rs_module_path != "C:\\Windows\\System32\\ApplicationFrameHost.exe"
-        {
-            result
-                .entry(rs_module_path)
-                .or_default()
-                .push((hwnd, title));
-            continue;
-        }
-        if let Some((i, _)) = owner_hwnds.iter().enumerate().find(|(_, v)| **v == hwnd) {
-            if let Some(module_path) = get_module_path(get_window_pid(hwnds[i])) {
-                rs_module_path = module_path;
+        if !is_valid_module_path(&module_path) {
+            if let Some((i, _)) = owner_hwnds.iter().enumerate().find(|(_, v)| **v == hwnd) {
+                if let Some(v) = get_module_path(get_window_pid(hwnds[i])) {
+                    module_path = v;
+                }
             }
         }
-        if !rs_module_path.is_empty()
-            && rs_module_path != "C:\\Windows\\System32\\ApplicationFrameHost.exe"
-        {
-            result
-                .entry(rs_module_path)
-                .or_default()
-                .push((hwnd, title));
+        if is_valid_module_path(&module_path) {
+            result.entry(module_path).or_default().push((hwnd, title));
         }
     }
     debug!("list windows {:?}", result);
     Ok(result)
+}
+
+fn is_valid_module_path(module_path: &str) -> bool {
+    !module_path.is_empty() && module_path != "C:\\Windows\\System32\\ApplicationFrameHost.exe"
 }
 
 extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {

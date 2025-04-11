@@ -147,7 +147,7 @@ pub fn get_window_exe(hwnd: HWND) -> Option<String> {
         return None;
     }
     let module_path = get_module_path(pid)?;
-    module_path.split('\\').map(|v| v.to_string()).last()
+    module_path.split('\\').map(|v| v.to_string()).next_back()
 }
 
 pub fn set_foreground_window(hwnd: HWND) {

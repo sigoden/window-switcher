@@ -9,19 +9,20 @@ use windows::Win32::{
         Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
     },
     System::{
-        Console::{AllocConsole, FreeConsole, GetConsoleWindow},
         LibraryLoader::GetModuleFileNameW,
         Threading::{
             OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
             PROCESS_VM_READ,
         },
     },
-    UI::WindowsAndMessaging::{
-        EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
-        GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
-        SetForegroundWindow, SetWindowPos, ShowWindow, GWL_EXSTYLE, GWL_STYLE, GWL_USERDATA,
-        GW_OWNER, SWP_NOZORDER, SW_RESTORE, WINDOWPLACEMENT, WS_EX_TOOLWINDOW, WS_ICONIC,
-        WS_VISIBLE,
+    UI::{
+        Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_MOUSE},
+        WindowsAndMessaging::{
+            EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
+            GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
+            SetForegroundWindow, ShowWindow, GWL_EXSTYLE, GWL_STYLE, GWL_USERDATA, GW_OWNER,
+            SW_RESTORE, WINDOWPLACEMENT, WS_EX_TOOLWINDOW, WS_ICONIC, WS_VISIBLE,
+        },
     },
 };
 
@@ -150,20 +151,20 @@ pub fn get_window_exe(hwnd: HWND) -> Option<String> {
 }
 
 pub fn set_foreground_window(hwnd: HWND) {
+    // ref https://github.com/microsoft/PowerToys/blob/4cb72ee126caf1f720c507f6a1dbe658cd515366/src/modules/fancyzones/FancyZonesLib/WindowUtils.cpp#L191
     unsafe {
         if is_iconic_window(hwnd) {
             let _ = ShowWindow(hwnd, SW_RESTORE);
         }
-        if hwnd == get_foreground_window() {
-            return;
-        }
-        if SetForegroundWindow(hwnd).ok().is_err() {
-            let _ = AllocConsole();
-            let hwnd_console = GetConsoleWindow();
-            let _ = SetWindowPos(hwnd_console, None, 0, 0, 0, 0, SWP_NOZORDER);
-            let _ = FreeConsole();
-            let _ = SetForegroundWindow(hwnd);
-        }
+
+        let input = INPUT {
+            r#type: INPUT_MOUSE,
+            ..Default::default()
+        };
+
+        SendInput(&[input], std::mem::size_of::<INPUT>() as i32);
+
+        let _ = SetForegroundWindow(hwnd);
     };
 }
 

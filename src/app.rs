@@ -48,6 +48,7 @@ static mut WM_TASKBARCREATED: u32 = 0;
 
 pub struct App {
     hwnd: HWND,
+    is_admin: bool,
     trayicon: Option<TrayIcon>,
     startup: Startup,
     config: Config,
@@ -77,6 +78,7 @@ impl App {
 
         let mut app = App {
             hwnd,
+            is_admin,
             trayicon,
             startup,
             config: config.clone(),
@@ -299,6 +301,7 @@ impl App {
         let windows = list_windows(
             self.config.switch_windows_ignore_minimal,
             self.config.switch_windows_only_current_desktop(),
+            self.is_admin,
         )?;
         debug!(
             "switch windows: hwnd:{hwnd:?} reverse:{reverse} state:{:?}",
@@ -400,6 +403,7 @@ impl App {
         let windows = list_windows(
             self.config.switch_apps_ignore_minimal,
             self.config.switch_apps_only_current_desktop(),
+            self.is_admin,
         )?;
         let mut apps = vec![];
         for (module_path, hwnds) in windows.iter() {

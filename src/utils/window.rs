@@ -1,3 +1,5 @@
+use crate::utils::is_process_elevated;
+
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use std::{ffi::c_void, mem::size_of, path::PathBuf};
@@ -11,8 +13,8 @@ use windows::Win32::{
     System::{
         LibraryLoader::GetModuleFileNameW,
         Threading::{
-            OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_INFORMATION,
-            PROCESS_VM_READ,
+            OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
+            PROCESS_QUERY_LIMITED_INFORMATION,
         },
     },
     UI::{
@@ -115,11 +117,7 @@ pub fn get_window_pid(hwnd: HWND) -> u32 {
 }
 
 pub fn get_module_path(pid: u32) -> Option<String> {
-    let handle =
-        match unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, None, pid) } {
-            Ok(v) => v,
-            Err(_) => return None,
-        };
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, None, pid) }.ok()?;
     let mut len: u32 = MAX_PATH;
     let mut name = vec![0u16; len as usize];
     let ret = unsafe {
@@ -212,6 +210,7 @@ pub fn set_window_user_data(hwnd: HWND, ptr: isize) -> isize {
 pub fn list_windows(
     ignore_minimal: bool,
     only_current_desktop: bool,
+    is_admin: bool,
 ) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
     let mut result: IndexMap<String, Vec<(HWND, String)>> = IndexMap::new();
     let mut hwnds: Vec<HWND> = Default::default();
@@ -235,18 +234,20 @@ pub fn list_windows(
         owner_hwnds.push(get_owner_window(hwnd))
     }
     for (hwnd, title) in valid_hwnds.into_iter() {
-        let mut module_path = "".to_string();
-        if let Some(v) = get_module_path(get_window_pid(hwnd)) {
-            module_path = v;
-        }
+        let mut pid = get_window_pid(hwnd);
+        let mut module_path = get_module_path(pid).unwrap_or_default();
         if !is_valid_module_path(&module_path) {
             if let Some((i, _)) = owner_hwnds.iter().enumerate().find(|(_, v)| **v == hwnd) {
-                if let Some(v) = get_module_path(get_window_pid(hwnds[i])) {
-                    module_path = v;
-                }
+                pid = get_window_pid(hwnds[i]);
+                module_path = get_module_path(pid).unwrap_or_default();
             }
         }
         if is_valid_module_path(&module_path) {
+            if !is_admin {
+                if let Some(true) = is_process_elevated(pid) {
+                    continue;
+                }
+            }
             result.entry(module_path).or_default().push((hwnd, title));
         }
     }

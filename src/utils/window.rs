@@ -23,20 +23,21 @@ use windows::Win32::{
             EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
             GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
             SetForegroundWindow, ShowWindow, GWL_EXSTYLE, GWL_STYLE, GWL_USERDATA, GW_OWNER,
-            SW_RESTORE, WINDOWPLACEMENT, WS_EX_TOOLWINDOW, WS_ICONIC, WS_VISIBLE,
+            SW_RESTORE, WINDOWPLACEMENT, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_ICONIC, WS_VISIBLE,
         },
     },
 };
 
-pub fn get_window_state(hwnd: HWND) -> (bool, bool, bool) {
+pub fn get_window_state(hwnd: HWND) -> (bool, bool, bool, bool) {
     let style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32;
     let exstyle = unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32;
 
     let is_visible = style & WS_VISIBLE.0 != 0;
     let is_iconic = style & WS_ICONIC.0 != 0;
     let is_tool = exstyle & WS_EX_TOOLWINDOW.0 != 0;
+    let is_topmost = exstyle & WS_EX_TOPMOST.0 != 0;
 
-    (is_visible, is_iconic, is_tool)
+    (is_visible, is_iconic, is_tool, is_topmost)
 }
 
 pub fn is_iconic_window(hwnd: HWND) -> bool {
@@ -219,10 +220,11 @@ pub fn list_windows(
     let mut valid_hwnds = vec![];
     let mut owner_hwnds = vec![];
     for hwnd in hwnds.iter().cloned() {
-        let (is_visible, is_iconic, is_tool) = get_window_state(hwnd);
+        let (is_visible, is_iconic, is_tool, is_topmost) = get_window_state(hwnd);
         let ok = is_visible
             && (if ignore_minimal { !is_iconic } else { true })
             && !is_tool
+            && !is_topmost
             && !is_cloaked_window(hwnd, only_current_desktop)
             && !is_small_window(hwnd);
         if ok {

@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
 use window_switcher::utils::*;
 
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+use windows::core::BOOL;
+use windows::Win32::Foundation::{HWND, LPARAM};
 use windows::Win32::Graphics::Dwm::{DWM_CLOAKED_APP, DWM_CLOAKED_INHERITED, DWM_CLOAKED_SHELL};
 use windows::Win32::UI::WindowsAndMessaging::{EnumWindows, GetWindow, GW_OWNER};
 

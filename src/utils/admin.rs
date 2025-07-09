@@ -16,7 +16,7 @@ pub fn is_running_as_admin() -> Result<bool> {
 }
 
 pub fn is_process_elevated(pid: u32) -> Option<bool> {
-    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, None, pid) }.ok()?;
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
     is_elevated(handle).ok()
 }
 

@@ -22,7 +22,7 @@ impl RegKey {
             RegOpenKeyExW(
                 HKEY_CURRENT_USER,
                 subkey,
-                0,
+                None,
                 KEY_ALL_ACCESS,
                 &mut hkey as *mut _,
             )
@@ -90,7 +90,7 @@ impl RegKey {
     }
 
     pub fn set_value(&self, value: &[u8]) -> Result<()> {
-        unsafe { RegSetValueExW(self.hkey, self.name, 0, REG_SZ, Some(value)) }
+        unsafe { RegSetValueExW(self.hkey, self.name, None, REG_SZ, Some(value)) }
             .ok()
             .map_err(|err| anyhow!("Fail to write reg value, {:?}", err))?;
         Ok(())

@@ -12,7 +12,7 @@ use indexmap::IndexMap;
 use windows::{
     core::PCWSTR,
     Win32::{
-        Foundation::{COLORREF, HWND, TRUE, WPARAM},
+        Foundation::{COLORREF, HWND, WPARAM},
         Graphics::Gdi::{
             CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetObjectW, GetPixel, ReleaseDC,
             SelectObject, BITMAP, HGDIOBJ,
@@ -154,7 +154,7 @@ pub fn load_image_as_hicon<T: AsRef<Path>>(image_path: T) -> Option<HICON> {
         let mut logo_file = File::open(image_path).ok()?;
         let mut buffer = vec![];
         logo_file.read_to_end(&mut buffer).ok()?;
-        unsafe { CreateIconFromResourceEx(&buffer, TRUE, 0x30000, 100, 100, LR_DEFAULTCOLOR) }.ok()
+        unsafe { CreateIconFromResourceEx(&buffer, true, 0x30000, 100, 100, LR_DEFAULTCOLOR) }.ok()
     }
 }
 
@@ -163,7 +163,7 @@ fn fallback_icon() -> HICON {
 }
 
 pub fn get_window_icon(hwnd: HWND) -> Option<HICON> {
-    let ret = unsafe { SendMessageW(hwnd, WM_GETICON, WPARAM(ICON_BIG as _), None) };
+    let ret = unsafe { SendMessageW(hwnd, WM_GETICON, Some(WPARAM(ICON_BIG as _)), None) };
     if ret.0 != 0 {
         return Some(HICON(ret.0 as _));
     }
@@ -239,18 +239,18 @@ fn get_icon_size(hicon: HICON) -> Option<(i32, i32)> {
 
         let mut bmp = BITMAP::default();
         if 0 == GetObjectW(
-            icon_info.hbmColor,
+            icon_info.hbmColor.into(),
             std::mem::size_of::<BITMAP>() as i32,
             Some(&mut bmp as *mut _ as *mut _),
         ) {
-            let _ = DeleteObject(icon_info.hbmColor);
-            let _ = DeleteObject(icon_info.hbmMask);
+            let _ = DeleteObject(icon_info.hbmColor.into());
+            let _ = DeleteObject(icon_info.hbmMask.into());
             return None;
         }
 
         let (width, height) = (bmp.bmWidth, bmp.bmHeight);
         let hdc = GetDC(None);
-        let hmemdc = CreateCompatibleDC(hdc);
+        let hmemdc = CreateCompatibleDC(Some(hdc));
         let old_bitmap = SelectObject(hmemdc, HGDIOBJ(icon_info.hbmColor.0 as _));
 
         let (mut min_x, mut min_y, mut max_x, mut max_y) = (width, height, 0, 0);
@@ -278,8 +278,8 @@ fn get_icon_size(hicon: HICON) -> Option<(i32, i32)> {
         SelectObject(hmemdc, old_bitmap);
         let _ = DeleteDC(hmemdc);
         ReleaseDC(None, hdc);
-        let _ = DeleteObject(icon_info.hbmColor);
-        let _ = DeleteObject(icon_info.hbmMask);
+        let _ = DeleteObject(icon_info.hbmColor.into());
+        let _ = DeleteObject(icon_info.hbmMask.into());
 
         Some((max_x - min_x + 1, max_y - min_y + 1))
     }

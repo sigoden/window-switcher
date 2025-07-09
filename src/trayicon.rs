@@ -59,7 +59,7 @@ impl TrayIcon {
                 TPM_LEFTALIGN | TPM_BOTTOMALIGN,
                 cursor.x,
                 cursor.y,
-                0,
+                None,
                 hwnd,
                 None,
             )

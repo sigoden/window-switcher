@@ -253,7 +253,7 @@ pub fn list_windows(
             result.entry(module_path).or_default().push((hwnd, title));
         }
     }
-    debug!("list windows {:?}", result);
+    debug!("list windows {result:?}");
     Ok(result)
 }
 

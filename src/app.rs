@@ -39,7 +39,7 @@ pub const IDM_STARTUP: u32 = 2;
 pub const IDM_CONFIGURE: u32 = 3;
 
 pub fn start(config: &Config) -> Result<()> {
-    info!("start config={:?}", config);
+    info!("start config={config:?}");
     App::start(config)
 }
 

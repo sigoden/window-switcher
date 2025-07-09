@@ -24,7 +24,7 @@ use windows::Win32::{
 pub fn create_scheduled_task(name: &str, exe_path: &str) -> Result<()> {
     let task_xml_path = create_task_file(name, exe_path)
         .map_err(|err| anyhow!("Failed to create scheduled task, {err}"))?;
-    debug!("scheduled task file: {}", task_xml_path);
+    debug!("scheduled task file: {task_xml_path}");
     let output = Command::new("schtasks")
         .creation_flags(CREATE_NO_WINDOW.0) // CREATE_NO_WINDOW flag
         .args(["/create", "/tn", name, "/xml", &task_xml_path, "/f"])
@@ -69,7 +69,7 @@ fn create_task_file(name: &str, exe_path: &str) -> Result<String> {
         .map_err(|err| anyhow!("Failed to get author and user id, {err}"))?;
     let current_time = get_current_time();
     let command_path = if exe_path.contains(|c: char| c.is_whitespace()) {
-        format!("\"{}\"", exe_path)
+        format!("\"{exe_path}\"")
     } else {
         exe_path.to_string()
     };
@@ -200,7 +200,7 @@ fn get_author_and_userid() -> WindowsResult<(String, String)> {
         .to_string_lossy()
         .into_owned();
 
-    Ok((format!("{}\\{}", domainname, username), sid_str))
+    Ok((format!("{domainname}\\{username}"), sid_str))
 }
 
 fn get_current_time() -> String {

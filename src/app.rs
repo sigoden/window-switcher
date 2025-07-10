@@ -103,7 +103,7 @@ impl App {
     fn eventloop() -> Result<()> {
         let mut message = MSG::default();
         loop {
-            let ret = unsafe { GetMessageW(&mut message, HWND::default(), 0, 0) };
+            let ret = unsafe { GetMessageW(&mut message, None, 0, 0) };
             match ret.0 {
                 -1 => {
                     unsafe { GetLastError() }.ok()?;
@@ -152,7 +152,7 @@ impl App {
                 CW_USEDEFAULT,
                 None,
                 None,
-                hinstance,
+                Some(hinstance.into()),
                 None,
             )
         }
@@ -178,7 +178,7 @@ impl App {
                             std::thread::sleep(std::time::Duration::from_secs(3));
                             let _ = unsafe {
                                 PostMessageW(
-                                    HWND(hwnd as _),
+                                    Some(HWND(hwnd as _)),
                                     WM_USER_REGISTER_TRAYICON,
                                     WPARAM(0),
                                     LPARAM(0),

@@ -48,7 +48,12 @@ impl KeyboardListener {
         let hook = unsafe {
             let hinstance = { GetModuleHandleW(None) }
                 .map_err(|err| anyhow!("Failed to get module handle, {err}"))?;
-            SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_proc), hinstance, 0)
+            SetWindowsHookExW(
+                WH_KEYBOARD_LL,
+                Some(keyboard_proc),
+                Some(hinstance.into()),
+                0,
+            )
         }
         .map_err(|err| anyhow!("Failed to set windows hook, {err}"))?;
         info!("keyboard listener start");
@@ -91,13 +96,9 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
                 if PREVIOUS_KEYCODE == state.hotkey.code {
                     let id = state.hotkey.id;
                     if id == SWITCH_APPS_HOTKEY_ID {
-                        unsafe {
-                            SendMessageW(WINDOW, WM_USER_SWITCH_APPS_DONE, WPARAM(0), LPARAM(0))
-                        };
+                        unsafe { SendMessageW(WINDOW, WM_USER_SWITCH_APPS_DONE, None, None) };
                     } else if id == SWITCH_WINDOWS_HOTKEY_ID {
-                        unsafe {
-                            SendMessageW(WINDOW, WM_USER_SWITCH_WINDOWS_DONE, WPARAM(0), LPARAM(0))
-                        };
+                        unsafe { SendMessageW(WINDOW, WM_USER_SWITCH_WINDOWS_DONE, None, None) };
                     }
                 }
             }
@@ -111,21 +112,24 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
                     let reverse = if IS_SHIFT_PRESSED { 1 } else { 0 };
                     if id == SWITCH_APPS_HOTKEY_ID {
                         unsafe {
-                            SendMessageW(WINDOW, WM_USER_SWITCH_APPS, WPARAM(0), LPARAM(reverse))
+                            SendMessageW(WINDOW, WM_USER_SWITCH_APPS, None, Some(LPARAM(reverse)))
                         };
                         PREVIOUS_KEYCODE = scan_code;
                         return LRESULT(1);
                     } else if id == SWITCH_WINDOWS_HOTKEY_ID && !IS_FOREGROUND_IN_BLACKLIST {
                         unsafe {
-                            SendMessageW(WINDOW, WM_USER_SWITCH_WINDOWS, WPARAM(0), LPARAM(reverse))
+                            SendMessageW(
+                                WINDOW,
+                                WM_USER_SWITCH_WINDOWS,
+                                None,
+                                Some(LPARAM(reverse)),
+                            )
                         };
                         PREVIOUS_KEYCODE = scan_code;
                         return LRESULT(1);
                     }
                 } else if scan_code == 0x01 && id == SWITCH_APPS_HOTKEY_ID {
-                    unsafe {
-                        SendMessageW(WINDOW, WM_USER_SWITCH_APPS_CANCEL, WPARAM(0), LPARAM(0))
-                    };
+                    unsafe { SendMessageW(WINDOW, WM_USER_SWITCH_APPS_CANCEL, None, None) };
                     PREVIOUS_KEYCODE = scan_code;
                     return LRESULT(1);
                 }

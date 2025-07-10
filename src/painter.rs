@@ -9,7 +9,7 @@ use windows::Win32::{
             CreateCompatibleBitmap, CreateCompatibleDC, CreateRoundRectRgn, CreateSolidBrush,
             DeleteDC, DeleteObject, FillRect, FillRgn, GetDC, ReleaseDC, SelectObject,
             SetStretchBltMode, StretchBlt, AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION, HALFTONE,
-            HBITMAP, HBRUSH, HDC, HPALETTE, SRCCOPY,
+            HBITMAP, HDC, HPALETTE, SRCCOPY,
         },
         GdiPlus::{
             FillModeAlternate, GdipAddPathArc, GdipClosePathFigure, GdipCreateBitmapFromHBITMAP,
@@ -59,7 +59,7 @@ impl GdiAAPainter {
         check_error(|| unsafe { GdiplusStartup(&mut token, &startup_input, std::ptr::null_mut()) })
             .context("Failed to initialize GDI+")?;
 
-        let hdc_screen = unsafe { GetDC(hwnd) };
+        let hdc_screen = unsafe { GetDC(Some(hwnd)) };
         let rounded_corner = is_win11();
 
         Ok(Self {
@@ -93,9 +93,9 @@ impl GdiAAPainter {
         let (fg_color, bg_color) = theme_color(is_light_theme());
 
         unsafe {
-            let hdc_mem = CreateCompatibleDC(hdc_screen);
+            let hdc_mem = CreateCompatibleDC(Some(hdc_screen));
             let bitmap_mem = CreateCompatibleBitmap(hdc_screen, width, height);
-            SelectObject(hdc_mem, bitmap_mem);
+            SelectObject(hdc_mem, bitmap_mem.into());
 
             let mut graphics = GpGraphics::default();
             let mut graphics_ptr: *mut GpGraphics = &mut graphics;
@@ -167,13 +167,13 @@ impl GdiAAPainter {
             };
             let _ = UpdateLayeredWindow(
                 hwnd,
-                hdc_screen,
+                Some(hdc_screen),
                 Some(&POINT { x, y }),
                 Some(&SIZE {
                     cx: width,
                     cy: height,
                 }),
-                hdc_mem,
+                Some(hdc_mem),
                 Some(&POINT::default()),
                 COLORREF(0),
                 Some(&blend),
@@ -185,8 +185,8 @@ impl GdiAAPainter {
             GdipDeletePen(bg_pen_ptr);
             GdipDeleteGraphics(graphics_ptr);
 
-            let _ = DeleteObject(bitmap_icons);
-            let _ = DeleteObject(bitmap_mem);
+            let _ = DeleteObject(bitmap_icons.into());
+            let _ = DeleteObject(bitmap_mem.into());
             let _ = DeleteDC(hdc_mem);
         }
 
@@ -195,7 +195,7 @@ impl GdiAAPainter {
         }
         unsafe {
             let _ = ShowWindow(self.hwnd, SW_SHOW);
-            let _ = SetFocus(self.hwnd);
+            let _ = SetFocus(Some(self.hwnd));
         }
         self.show = true;
     }
@@ -211,7 +211,7 @@ impl GdiAAPainter {
 impl Drop for GdiAAPainter {
     fn drop(&mut self) {
         unsafe {
-            ReleaseDC(self.hwnd, self.hdc_screen);
+            ReleaseDC(Some(self.hwnd), self.hdc_screen);
             GdiplusShutdown(self.token);
         }
     }
@@ -319,13 +319,13 @@ fn draw_icons(
     let scaled_icon_outer_size = scaled_icon_inner_size + scaled_border_size * 2;
 
     unsafe {
-        let hdc_tmp = CreateCompatibleDC(hdc_screen);
+        let hdc_tmp = CreateCompatibleDC(Some(hdc_screen));
         let bitmap_tmp = CreateCompatibleBitmap(hdc_screen, width, height);
-        SelectObject(hdc_tmp, bitmap_tmp);
+        SelectObject(hdc_tmp, bitmap_tmp.into());
 
-        let hdc_scaled = CreateCompatibleDC(hdc_screen);
+        let hdc_scaled = CreateCompatibleDC(Some(hdc_screen));
         let bitmap_scaled = CreateCompatibleBitmap(hdc_screen, scaled_width, scaled_height);
-        SelectObject(hdc_scaled, bitmap_scaled);
+        SelectObject(hdc_scaled, bitmap_scaled.into());
 
         let fg_brush = CreateSolidBrush(COLORREF(fg_color));
         let bg_brush = CreateSolidBrush(COLORREF(bg_color));
@@ -355,7 +355,7 @@ fn draw_icons(
                     scaled_corner_radius,
                 );
                 let _ = FillRgn(hdc_scaled, rgn, fg_brush);
-                let _ = DeleteObject(rgn);
+                let _ = DeleteObject(rgn.into());
             }
 
             let cx = scaled_border_size + scaled_icon_outer_size * (i as i32);
@@ -367,7 +367,7 @@ fn draw_icons(
                 scaled_icon_inner_size,
                 scaled_icon_inner_size,
                 0,
-                HBRUSH::default(),
+                None,
                 DI_NORMAL,
             );
         }
@@ -379,7 +379,7 @@ fn draw_icons(
             0,
             width,
             height,
-            hdc_scaled,
+            Some(hdc_scaled),
             0,
             0,
             scaled_width,
@@ -387,9 +387,9 @@ fn draw_icons(
             SRCCOPY,
         );
 
-        let _ = DeleteObject(fg_brush);
-        let _ = DeleteObject(bg_brush);
-        let _ = DeleteObject(bitmap_scaled);
+        let _ = DeleteObject(fg_brush.into());
+        let _ = DeleteObject(bg_brush.into());
+        let _ = DeleteObject(bitmap_scaled.into());
         let _ = DeleteDC(hdc_scaled);
         let _ = DeleteDC(hdc_tmp);
 

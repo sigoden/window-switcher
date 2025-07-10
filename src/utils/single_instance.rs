@@ -3,7 +3,7 @@ use super::to_wstring;
 use anyhow::{anyhow, Result};
 use windows::core::PCWSTR;
 use windows::Win32::{
-    Foundation::{CloseHandle, BOOL, ERROR_ALREADY_EXISTS, HANDLE},
+    Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, HANDLE},
     System::Threading::{CreateMutexW, ReleaseMutex},
 };
 
@@ -19,7 +19,7 @@ impl SingleInstance {
     /// Returns a new SingleInstance object.
     pub fn create(name: &str) -> Result<Self> {
         let name = to_wstring(name);
-        let handle = unsafe { CreateMutexW(None, BOOL(1), PCWSTR(name.as_ptr())) }
+        let handle = unsafe { CreateMutexW(None, true, PCWSTR(name.as_ptr())) }
             .map_err(|err| anyhow!("Fail to setup single instance, {err}"))?;
         let handle =
             if windows::core::Error::from_win32().code() == ERROR_ALREADY_EXISTS.to_hresult() {

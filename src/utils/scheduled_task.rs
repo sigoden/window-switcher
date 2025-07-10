@@ -177,9 +177,9 @@ fn get_author_and_userid() -> WindowsResult<(String, String)> {
         LookupAccountSidW(
             None,
             user_sid,
-            PWSTR(name.as_mut_ptr()),
+            Some(PWSTR(name.as_mut_ptr())),
             &mut name_len,
-            PWSTR(domain.as_mut_ptr()),
+            Some(PWSTR(domain.as_mut_ptr())),
             &mut domain_len,
             &mut sid_name_use,
         )?

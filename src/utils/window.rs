@@ -3,9 +3,9 @@ use crate::utils::is_process_elevated;
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use std::{ffi::c_void, mem::size_of, path::PathBuf};
-use windows::core::PWSTR;
+use windows::core::{BOOL, PWSTR};
 use windows::Win32::{
-    Foundation::{BOOL, HWND, LPARAM, MAX_PATH, POINT, RECT},
+    Foundation::{HWND, LPARAM, MAX_PATH, POINT, RECT},
     Graphics::{
         Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL},
         Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
@@ -118,7 +118,7 @@ pub fn get_window_pid(hwnd: HWND) -> u32 {
 }
 
 pub fn get_module_path(pid: u32) -> Option<String> {
-    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, None, pid) }.ok()?;
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok()?;
     let mut len: u32 = MAX_PATH;
     let mut name = vec![0u16; len as usize];
     let ret = unsafe {

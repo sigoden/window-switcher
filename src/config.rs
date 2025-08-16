@@ -22,16 +22,20 @@ pub struct Config {
     pub switch_windows_blacklist: HashSet<String>,
     pub switch_windows_ignore_minimal: bool,
     switch_windows_only_current_desktop: Option<bool>,
+    pub switch_windows_only_current_monitor: bool, // New field
     pub switch_apps_enable: bool,
     pub switch_apps_hotkey: Hotkey,
     pub switch_apps_ignore_minimal: bool,
     pub switch_apps_override_icons: IndexMap<String, String>,
     switch_apps_only_current_desktop: Option<bool>,
+    pub switch_apps_only_current_monitor: bool, // New field
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
+            switch_windows_only_current_monitor: false, // Default to false
+            switch_apps_only_current_monitor: false,    // Default to false
             trayicon: true,
             log_level: LevelFilter::Info,
             log_file: None,
@@ -85,6 +89,12 @@ impl Config {
                     conf.switch_windows_hotkey =
                         Hotkey::create(SWITCH_WINDOWS_HOTKEY_ID, "switch windows", v)?;
                 }
+                if let Some(v) = section
+                    .get("only_current_monitor")
+                    .and_then(Config::to_bool)
+                {
+                    conf.switch_windows_only_current_monitor = v;
+                }
             }
 
             if let Some(v) = section
@@ -107,6 +117,12 @@ impl Config {
         if let Some(section) = ini_conf.section(Some("switch-apps")) {
             if let Some(v) = section.get("enable").and_then(Config::to_bool) {
                 conf.switch_apps_enable = v;
+            }
+            if let Some(v) = section
+                .get("only_current_monitor")
+                .and_then(Config::to_bool)
+            {
+                conf.switch_apps_only_current_monitor = v;
             }
             if let Some(v) = section.get("hotkey") {
                 if !v.trim().is_empty() {

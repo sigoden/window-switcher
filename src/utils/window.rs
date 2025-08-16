@@ -8,7 +8,7 @@ use windows::Win32::{
     Foundation::{HWND, LPARAM, MAX_PATH, POINT, RECT},
     Graphics::{
         Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL},
-        Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
+        Gdi::{GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST},
     },
     System::{
         LibraryLoader::GetModuleFileNameW,
@@ -203,14 +203,43 @@ pub fn set_window_user_data(hwnd: HWND, ptr: i32) -> i32 {
 pub fn set_window_user_data(hwnd: HWND, ptr: isize) -> isize {
     unsafe { windows::Win32::UI::WindowsAndMessaging::SetWindowLongPtrW(hwnd, GWL_USERDATA, ptr) }
 }
-
+pub fn get_window_monitor(hwnd: HWND) -> windows::Win32::Graphics::Gdi::HMONITOR {
+    unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) }
+}
+pub fn get_current_monitor() -> windows::Win32::Graphics::Gdi::HMONITOR {
+    unsafe {
+        let mut cursor = POINT::default();
+        let _ = GetCursorPos(&mut cursor);
+        MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST)
+    }
+}
+pub fn is_window_on_current_monitor(hwnd: HWND) -> bool {
+    let window_monitor = get_window_monitor(hwnd);
+    let current_monitor = get_current_monitor();
+    window_monitor == current_monitor
+}
+pub fn get_monitor_bounds(hmonitor: windows::Win32::Graphics::Gdi::HMONITOR) -> Option<RECT> {
+    unsafe {
+        let mut mi = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..MONITORINFO::default()
+        };
+        let result = GetMonitorInfoW(hmonitor, &mut mi);
+        if result.as_bool() {
+            Some(mi.rcMonitor)
+        } else {
+            None
+        }
+    }
+}
 /// Lists available windows
 ///
-/// Duo to the limitation of `OpenProcess`, this function will not list `Task Manager`
+/// Due to the limitation of `OpenProcess`, this function will not list `Task Manager`
 /// and others which are running as administrator if `Switcher` is not `running as administrator`.
 pub fn list_windows(
     ignore_minimal: bool,
     only_current_desktop: bool,
+    only_current_monitor: bool,
     is_admin: bool,
 ) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
     let mut result: IndexMap<String, Vec<(HWND, String)>> = IndexMap::new();
@@ -219,8 +248,15 @@ pub fn list_windows(
         .map_err(|e| anyhow!("Fail to get windows {}", e))?;
     let mut valid_hwnds = vec![];
     let mut owner_hwnds = vec![];
+    let current_monitor = if only_current_monitor {
+        Some(get_current_monitor())
+    } else {
+        None
+    };
+
     for hwnd in hwnds.iter().cloned() {
         let (is_visible, is_iconic, is_tool, is_topmost) = get_window_state(hwnd);
+
         let ok = is_visible
             && (if ignore_minimal { !is_iconic } else { true })
             && !is_tool
@@ -228,12 +264,20 @@ pub fn list_windows(
             && !is_cloaked_window(hwnd, only_current_desktop)
             && !is_small_window(hwnd);
         if ok {
+            //add monitor filtering
+            if let Some(monitor) = current_monitor {
+                let window_monitor = get_window_monitor(hwnd);
+                if window_monitor != monitor {
+                    owner_hwnds.push(get_owner_window(hwnd));
+                    continue; //skip this window if it's not on the current monitor
+                }
+            }
             let title = get_window_title(hwnd);
             if !title.is_empty() && title != "Windows Input Experience" {
                 valid_hwnds.push((hwnd, title));
             }
         }
-        owner_hwnds.push(get_owner_window(hwnd))
+        owner_hwnds.push(get_owner_window(hwnd));
     }
     for (hwnd, title) in valid_hwnds.into_iter() {
         let mut pid = get_window_pid(hwnd);

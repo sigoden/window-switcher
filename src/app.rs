@@ -301,6 +301,7 @@ impl App {
         let windows = list_windows(
             self.config.switch_windows_ignore_minimal,
             self.config.switch_windows_only_current_desktop(),
+            self.config.switch_windows_only_current_monitor,
             self.is_admin,
         )?;
         debug!(
@@ -402,6 +403,7 @@ impl App {
         }
         let windows = list_windows(
             self.config.switch_apps_ignore_minimal,
+            self.config.switch_apps_only_current_monitor,
             self.config.switch_apps_only_current_desktop(),
             self.is_admin,
         )?;

@@ -30,7 +30,7 @@ use windows::Win32::{
     },
 };
 
-pub const BG_DARK_COLOR: u32 = 0x4c4c4c;
+pub const BG_DARK_COLOR: u32 = 0x262626;
 pub const FG_DARK_COLOR: u32 = 0x3b3b3b;
 pub const BG_LIGHT_COLOR: u32 = 0xe0e0e0;
 pub const FG_LIGHT_COLOR: u32 = 0xf2f2f2;

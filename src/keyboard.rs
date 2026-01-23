@@ -16,8 +16,8 @@ use windows::Win32::{
     UI::{
         Input::KeyboardAndMouse::{SCANCODE_LSHIFT, SCANCODE_RSHIFT},
         WindowsAndMessaging::{
-            CallNextHookEx, SendMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
-            KBDLLHOOKSTRUCT, LLKHF_UP, WH_KEYBOARD_LL,
+            CallNextHookEx, SendMessageTimeoutW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
+            KBDLLHOOKSTRUCT, LLKHF_UP, SMTO_ABORTIFHUNG, WH_KEYBOARD_LL,
         },
     },
 };
@@ -77,6 +77,19 @@ struct HotKeyState {
     is_modifier_pressed: bool,
 }
 
+unsafe fn send_message_timeout(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) {
+    let mut result: usize = 0;
+    let _ = SendMessageTimeoutW(
+        hwnd,
+        msg,
+        wparam,
+        lparam,
+        SMTO_ABORTIFHUNG,
+        500,
+        Some(&mut result as *mut _ as *mut _),
+    );
+}
+
 unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     let kbd_data: &KBDLLHOOKSTRUCT = &*(l_param.0 as *const _);
     debug!("keyboard {kbd_data:?}");
@@ -134,21 +147,21 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
 
     if let Some(id) = send_done_message {
         if id == SWITCH_APPS_HOTKEY_ID {
-            unsafe { SendMessageW(WINDOW, WM_USER_SWITCH_APPS_DONE, None, None) };
+            send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_DONE, WPARAM(0), LPARAM(0));
         } else if id == SWITCH_WINDOWS_HOTKEY_ID {
-            unsafe { SendMessageW(WINDOW, WM_USER_SWITCH_WINDOWS_DONE, None, None) };
+            send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS_DONE, WPARAM(0), LPARAM(0));
         }
     }
 
     if let Some((id, reverse, is_cancel)) = send_action_message {
         if is_cancel {
-            unsafe { SendMessageW(WINDOW, WM_USER_SWITCH_APPS_CANCEL, None, None) };
+            send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_CANCEL, WPARAM(0), LPARAM(0));
             return LRESULT(1);
         } else if id == SWITCH_APPS_HOTKEY_ID {
-            unsafe { SendMessageW(WINDOW, WM_USER_SWITCH_APPS, None, Some(LPARAM(reverse))) };
+            send_message_timeout(WINDOW, WM_USER_SWITCH_APPS, WPARAM(0), LPARAM(reverse));
             return LRESULT(1);
         } else if id == SWITCH_WINDOWS_HOTKEY_ID {
-            unsafe { SendMessageW(WINDOW, WM_USER_SWITCH_WINDOWS, None, Some(LPARAM(reverse))) };
+            send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS, WPARAM(0), LPARAM(reverse));
             return LRESULT(1);
         }
     }

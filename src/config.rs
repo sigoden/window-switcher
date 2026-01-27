@@ -18,12 +18,12 @@ pub struct Config {
     pub trayicon: bool,
     pub log_level: LevelFilter,
     pub log_file: Option<PathBuf>,
-    pub switch_windows_hotkey: Hotkey,
+    pub switch_windows_hotkey: Vec<Hotkey>,
     pub switch_windows_blacklist: HashSet<String>,
     pub switch_windows_ignore_minimal: bool,
     switch_windows_only_current_desktop: Option<bool>,
     pub switch_apps_enable: bool,
-    pub switch_apps_hotkey: Hotkey,
+    pub switch_apps_hotkey: Vec<Hotkey>,
     pub switch_apps_ignore_minimal: bool,
     pub switch_apps_override_icons: IndexMap<String, String>,
     switch_apps_only_current_desktop: Option<bool>,
@@ -35,18 +35,18 @@ impl Default for Config {
             trayicon: true,
             log_level: LevelFilter::Info,
             log_file: None,
-            switch_windows_hotkey: Hotkey::create(
+            switch_windows_hotkey: vec![Hotkey::create(
                 SWITCH_WINDOWS_HOTKEY_ID,
                 "switch windows",
                 "alt + `",
             )
-            .unwrap(),
+            .unwrap()],
             switch_windows_blacklist: Default::default(),
             switch_windows_ignore_minimal: false,
             switch_windows_only_current_desktop: None,
             switch_apps_enable: false,
-            switch_apps_hotkey: Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", "alt + tab")
-                .unwrap(),
+            switch_apps_hotkey: vec![Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", "alt + tab")
+                .unwrap()],
             switch_apps_ignore_minimal: false,
             switch_apps_override_icons: Default::default(),
             switch_apps_only_current_desktop: None,
@@ -81,9 +81,16 @@ impl Config {
 
         if let Some(section) = ini_conf.section(Some("switch-windows")) {
             if let Some(v) = section.get("hotkey") {
-                if !v.trim().is_empty() {
-                    conf.switch_windows_hotkey =
-                        Hotkey::create(SWITCH_WINDOWS_HOTKEY_ID, "switch windows", v)?;
+                let hotkeys: Result<Vec<Hotkey>> = v
+                    .split(';')
+                    .map(|v| v.trim())
+                    .filter(|v| !v.is_empty())
+                    .map(|v| Hotkey::create(SWITCH_WINDOWS_HOTKEY_ID, "switch windows", v))
+                    .collect();
+                if let Ok(hotkeys) = hotkeys {
+                    if !hotkeys.is_empty() {
+                        conf.switch_windows_hotkey = hotkeys;
+                    }
                 }
             }
 
@@ -109,9 +116,16 @@ impl Config {
                 conf.switch_apps_enable = v;
             }
             if let Some(v) = section.get("hotkey") {
-                if !v.trim().is_empty() {
-                    conf.switch_apps_hotkey =
-                        Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", v)?;
+                let hotkeys: Result<Vec<Hotkey>> = v
+                    .split(';')
+                    .map(|v| v.trim())
+                    .filter(|v| !v.is_empty())
+                    .map(|v| Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", v))
+                    .collect();
+                if let Ok(hotkeys) = hotkeys {
+                    if !hotkeys.is_empty() {
+                        conf.switch_apps_hotkey = hotkeys;
+                    }
                 }
             }
             if let Some(v) = section.get("ignore_minimal").and_then(Config::to_bool) {
@@ -139,9 +153,9 @@ impl Config {
     }
 
     pub fn to_hotkeys(&self) -> Vec<&Hotkey> {
-        let mut hotkeys = vec![&self.switch_windows_hotkey];
+        let mut hotkeys: Vec<&Hotkey> = self.switch_windows_hotkey.iter().collect();
         if self.switch_apps_enable {
-            hotkeys.push(&self.switch_apps_hotkey);
+            hotkeys.extend(self.switch_apps_hotkey.iter());
         }
         hotkeys
     }

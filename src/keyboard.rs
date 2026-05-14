@@ -77,17 +77,39 @@ struct HotKeyState {
     is_modifier_pressed: bool,
 }
 
+const SCANCODE_LALT: u32 = 0x38;     // Left Alt
+const SCANCODE_RALT: u32 = 0xE038;   // Right Alt / AltGr (Scancode extended)
+
+static mut IS_ALTGR_PRESSED: bool = false;
 unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     let kbd_data: &KBDLLHOOKSTRUCT = &*(l_param.0 as *const _);
     debug!("keyboard {kbd_data:?}");
+
     let mut is_modifier = false;
     let scan_code = kbd_data.scanCode;
-    let is_key_pressed = || kbd_data.flags.0 & LLKHF_UP.0 == 0;
-    if [SCANCODE_LSHIFT, SCANCODE_RSHIFT].contains(&scan_code) {
+    let is_key_pressed = || kbd_data.flags. 0 & LLKHF_UP.0 == 0;
+
+    let is_extended = (kbd_data.flags.0 & windows::Win32::UI::WindowsAndMessaging::LLKHF_EXTENDED.0) != 0;
+
+    let real_scan_code = if scan_code == SCANCODE_LALT && is_extended {
+        SCANCODE_RALT
+    } else {
+        scan_code
+    };
+
+    if real_scan_code == SCANCODE_RALT {
+        IS_ALTGR_PRESSED = is_key_pressed();
+    }
+
+    if [SCANCODE_LSHIFT, SCANCODE_RSHIFT].contains(&real_scan_code) {
         IS_SHIFT_PRESSED = is_key_pressed();
     }
+
     for state in KEYBOARD_STATE.lock().iter_mut() {
-        if state.hotkey.modifier.contains(&scan_code) {
+        if state.hotkey.modifier.contains(&real_scan_code) {
+            if real_scan_code == SCANCODE_LALT && IS_ALTGR_PRESSED {
+                continue;
+            }
             is_modifier = true;
             if is_key_pressed() {
                 state.is_modifier_pressed = true;

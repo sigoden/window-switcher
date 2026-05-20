@@ -131,8 +131,21 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
                         break;
                     };
                 } else if scan_code == 0x01 && id == SWITCH_APPS_HOTKEY_ID {
+                    // escape key
                     send_action_message = Some((id, 0, true));
                     PREVIOUS_KEYCODE = scan_code;
+                    break;
+                } else if [0x48, 0x4b, 0x4d, 0x50].contains(&scan_code)
+                    && id == SWITCH_APPS_HOTKEY_ID
+                {
+                    // arrow keys
+                    let reverse = if scan_code == 0x48 || scan_code == 0x4b {
+                        1
+                    } else {
+                        0
+                    };
+                    send_action_message = Some((id, reverse, false));
+                    PREVIOUS_KEYCODE = state.hotkey.code;
                     break;
                 }
             }

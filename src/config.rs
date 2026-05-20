@@ -18,12 +18,12 @@ pub struct Config {
     pub trayicon: bool,
     pub log_level: LevelFilter,
     pub log_file: Option<PathBuf>,
-    pub switch_windows_hotkey: Hotkey,
+    pub switch_windows_hotkey: Vec<Hotkey>,
     pub switch_windows_blacklist: HashSet<String>,
     pub switch_windows_ignore_minimal: bool,
     switch_windows_only_current_desktop: Option<bool>,
     pub switch_apps_enable: bool,
-    pub switch_apps_hotkey: Hotkey,
+    pub switch_apps_hotkey: Vec<Hotkey>,
     pub switch_apps_ignore_minimal: bool,
     pub switch_apps_override_icons: IndexMap<String, String>,
     switch_apps_only_current_desktop: Option<bool>,
@@ -35,18 +35,22 @@ impl Default for Config {
             trayicon: true,
             log_level: LevelFilter::Info,
             log_file: None,
-            switch_windows_hotkey: Hotkey::create(
+            switch_windows_hotkey: vec![Hotkey::create(
                 SWITCH_WINDOWS_HOTKEY_ID,
                 "switch windows",
                 "alt + `",
             )
-            .unwrap(),
+            .unwrap()],
             switch_windows_blacklist: Default::default(),
             switch_windows_ignore_minimal: false,
             switch_windows_only_current_desktop: None,
             switch_apps_enable: false,
-            switch_apps_hotkey: Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", "alt + tab")
-                .unwrap(),
+            switch_apps_hotkey: vec![Hotkey::create(
+                SWITCH_APPS_HOTKEY_ID,
+                "switch apps",
+                "alt + tab",
+            )
+            .unwrap()],
             switch_apps_ignore_minimal: false,
             switch_apps_override_icons: Default::default(),
             switch_apps_only_current_desktop: None,
@@ -83,7 +87,7 @@ impl Config {
             if let Some(v) = section.get("hotkey") {
                 if !v.trim().is_empty() {
                     conf.switch_windows_hotkey =
-                        Hotkey::create(SWITCH_WINDOWS_HOTKEY_ID, "switch windows", v)?;
+                        parse_hotkeys(SWITCH_WINDOWS_HOTKEY_ID, "switch windows", v)?;
                 }
             }
 
@@ -111,7 +115,7 @@ impl Config {
             if let Some(v) = section.get("hotkey") {
                 if !v.trim().is_empty() {
                     conf.switch_apps_hotkey =
-                        Hotkey::create(SWITCH_APPS_HOTKEY_ID, "switch apps", v)?;
+                        parse_hotkeys(SWITCH_APPS_HOTKEY_ID, "switch apps", v)?;
                 }
             }
             if let Some(v) = section.get("ignore_minimal").and_then(Config::to_bool) {
@@ -139,9 +143,9 @@ impl Config {
     }
 
     pub fn to_hotkeys(&self) -> Vec<&Hotkey> {
-        let mut hotkeys = vec![&self.switch_windows_hotkey];
+        let mut hotkeys: Vec<&Hotkey> = self.switch_windows_hotkey.iter().collect();
         if self.switch_apps_enable {
-            hotkeys.push(&self.switch_apps_hotkey);
+            hotkeys.extend(self.switch_apps_hotkey.iter());
         }
         hotkeys
     }
@@ -358,6 +362,22 @@ fn normalize_path_value(value: &str) -> String {
     value.replace("\\\\", "\\")
 }
 
+fn parse_hotkeys(id: u32, name: &str, value: &str) -> Result<Vec<Hotkey>> {
+    let parts: Vec<&str> = value.split("||").collect();
+    let mut hotkeys = vec![];
+    for part in parts {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        hotkeys.push(Hotkey::create(id, name, part)?);
+    }
+    if hotkeys.is_empty() {
+        return Err(anyhow!("Invalid {name} hotkey"));
+    }
+    Ok(hotkeys)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,5 +386,20 @@ mod tests {
     fn test_hotkey() {
         assert_eq!(Hotkey::parse("alt + `"), Some(([0x38, 0x38], 0x29)));
         assert_eq!(Hotkey::parse("alt + tab"), Some(([0x38, 0x38], 0x0f)));
+    }
+
+    #[test]
+    fn test_parse_hotkeys() {
+        let hotkeys = parse_hotkeys(1, "test", "alt+` || alt+tab").unwrap();
+        assert_eq!(hotkeys.len(), 2);
+        assert_eq!(hotkeys[0].modifier, [0x38, 0x38]);
+        assert_eq!(hotkeys[0].code, 0x29);
+        assert_eq!(hotkeys[1].modifier, [0x38, 0x38]);
+        assert_eq!(hotkeys[1].code, 0x0f);
+
+        let hotkeys = parse_hotkeys(1, "test", "alt+`").unwrap();
+        assert_eq!(hotkeys.len(), 1);
+        assert_eq!(hotkeys[0].modifier, [0x38, 0x38]);
+        assert_eq!(hotkeys[0].code, 0x29);
     }
 }

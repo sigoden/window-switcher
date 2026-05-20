@@ -247,6 +247,7 @@ impl App {
                     .and_then(|state| state.apps.get(state.index).map(|(_, id)| *id))
                     .unwrap_or_else(get_foreground_window);
                 app.switch_windows(hwnd, reverse)?;
+                app.cancel_switch_app();
             }
             WM_USER_SWITCH_WINDOWS_DONE => {
                 debug!("message WM_USER_SWITCH_WINDOWS_DONE");

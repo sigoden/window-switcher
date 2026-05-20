@@ -8,6 +8,7 @@ use crate::{
 };
 
 use anyhow::{anyhow, Result};
+use indexmap::IndexSet;
 use parking_lot::Mutex;
 use std::sync::LazyLock;
 use windows::Win32::{
@@ -100,7 +101,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
         IS_SHIFT_PRESSED = is_key_pressed();
     }
     let mut keyboard_state = KEYBOARD_STATE.lock();
-    let mut send_done_message: Option<u32> = None;
+    let mut send_done_hotkeys: IndexSet<u32> = IndexSet::new();
     let mut send_action_message: Option<(u32, isize, bool)> = None;
 
     for state in keyboard_state.iter_mut() {
@@ -111,8 +112,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
             } else {
                 state.is_modifier_pressed = false;
                 if PREVIOUS_KEYCODE == state.hotkey.code {
-                    send_done_message = Some(state.hotkey.id);
-                    break;
+                    send_done_hotkeys.insert(state.hotkey.id);
                 }
             }
         }
@@ -140,7 +140,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
     }
     drop(keyboard_state);
 
-    if let Some(id) = send_done_message {
+    for id in send_done_hotkeys {
         if id == SWITCH_APPS_HOTKEY_ID {
             send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_DONE, WPARAM(0), LPARAM(0));
         } else if id == SWITCH_WINDOWS_HOTKEY_ID {

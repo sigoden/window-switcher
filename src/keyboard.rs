@@ -16,8 +16,8 @@ use windows::Win32::{
     UI::{
         Input::KeyboardAndMouse::{SCANCODE_LSHIFT, SCANCODE_RSHIFT},
         WindowsAndMessaging::{
-            CallNextHookEx, SendMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
-            KBDLLHOOKSTRUCT, LLKHF_UP, WH_KEYBOARD_LL,
+            CallNextHookEx, SendMessageTimeoutW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
+            KBDLLHOOKSTRUCT, LLKHF_UP, SMTO_ABORTIFHUNG, WH_KEYBOARD_LL,
         },
     },
 };
@@ -77,6 +77,19 @@ struct HotKeyState {
     is_modifier_pressed: bool,
 }
 
+unsafe fn send_message_timeout(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) {
+    let mut result: usize = 0;
+    let _ = SendMessageTimeoutW(
+        hwnd,
+        msg,
+        wparam,
+        lparam,
+        SMTO_ABORTIFHUNG,
+        500,
+        Some(&mut result as *mut _ as *mut _),
+    );
+}
+
 unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
     let kbd_data: &KBDLLHOOKSTRUCT = &*(l_param.0 as *const _);
     debug!("keyboard {kbd_data:?}");
@@ -86,7 +99,11 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
     if [SCANCODE_LSHIFT, SCANCODE_RSHIFT].contains(&scan_code) {
         IS_SHIFT_PRESSED = is_key_pressed();
     }
-    for state in KEYBOARD_STATE.lock().iter_mut() {
+    let mut keyboard_state = KEYBOARD_STATE.lock();
+    let mut send_done_message: Option<u32> = None;
+    let mut send_action_message: Option<(u32, isize, bool)> = None;
+
+    for state in keyboard_state.iter_mut() {
         if state.hotkey.modifier.contains(&scan_code) {
             is_modifier = true;
             if is_key_pressed() {
@@ -94,46 +111,58 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
             } else {
                 state.is_modifier_pressed = false;
                 if PREVIOUS_KEYCODE == state.hotkey.code {
-                    let id = state.hotkey.id;
-                    if id == SWITCH_APPS_HOTKEY_ID {
-                        unsafe { SendMessageW(WINDOW, WM_USER_SWITCH_APPS_DONE, None, None) };
-                    } else if id == SWITCH_WINDOWS_HOTKEY_ID {
-                        unsafe { SendMessageW(WINDOW, WM_USER_SWITCH_WINDOWS_DONE, None, None) };
-                    }
+                    send_done_message = Some(state.hotkey.id);
+                    break;
                 }
             }
         }
     }
     if !is_modifier {
-        for state in KEYBOARD_STATE.lock().iter_mut() {
+        for state in keyboard_state.iter_mut() {
             if is_key_pressed() && state.is_modifier_pressed {
                 let id = state.hotkey.id;
                 if scan_code == state.hotkey.code {
                     let reverse = if IS_SHIFT_PRESSED { 1 } else { 0 };
-                    if id == SWITCH_APPS_HOTKEY_ID {
-                        unsafe {
-                            SendMessageW(WINDOW, WM_USER_SWITCH_APPS, None, Some(LPARAM(reverse)))
-                        };
-                        PREVIOUS_KEYCODE = scan_code;
-                        return LRESULT(1);
+                    let action = if id == SWITCH_APPS_HOTKEY_ID {
+                        Some((id, reverse, false))
                     } else if id == SWITCH_WINDOWS_HOTKEY_ID && !IS_FOREGROUND_IN_BLACKLIST {
-                        unsafe {
-                            SendMessageW(
-                                WINDOW,
-                                WM_USER_SWITCH_WINDOWS,
-                                None,
-                                Some(LPARAM(reverse)),
-                            )
-                        };
+                        Some((id, reverse, false))
+                    } else {
+                        None
+                    };
+                    if let Some(msg) = action {
+                        send_action_message = Some(msg);
                         PREVIOUS_KEYCODE = scan_code;
-                        return LRESULT(1);
+                        break;
                     }
                 } else if scan_code == 0x01 && id == SWITCH_APPS_HOTKEY_ID {
-                    unsafe { SendMessageW(WINDOW, WM_USER_SWITCH_APPS_CANCEL, None, None) };
+                    send_action_message = Some((id, 0, true));
                     PREVIOUS_KEYCODE = scan_code;
-                    return LRESULT(1);
+                    break;
                 }
             }
+        }
+    }
+    drop(keyboard_state);
+
+    if let Some(id) = send_done_message {
+        if id == SWITCH_APPS_HOTKEY_ID {
+            send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_DONE, WPARAM(0), LPARAM(0));
+        } else if id == SWITCH_WINDOWS_HOTKEY_ID {
+            send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS_DONE, WPARAM(0), LPARAM(0));
+        }
+    }
+
+    if let Some((id, reverse, is_cancel)) = send_action_message {
+        if is_cancel {
+            send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_CANCEL, WPARAM(0), LPARAM(0));
+            return LRESULT(1);
+        } else if id == SWITCH_APPS_HOTKEY_ID {
+            send_message_timeout(WINDOW, WM_USER_SWITCH_APPS, WPARAM(0), LPARAM(reverse));
+            return LRESULT(1);
+        } else if id == SWITCH_WINDOWS_HOTKEY_ID {
+            send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS, WPARAM(0), LPARAM(reverse));
+            return LRESULT(1);
         }
     }
     CallNextHookEx(None, code, w_param, l_param)

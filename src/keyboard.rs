@@ -123,18 +123,13 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
                 let id = state.hotkey.id;
                 if scan_code == state.hotkey.code {
                     let reverse = if IS_SHIFT_PRESSED { 1 } else { 0 };
-                    let action = if id == SWITCH_APPS_HOTKEY_ID {
-                        Some((id, reverse, false))
-                    } else if id == SWITCH_WINDOWS_HOTKEY_ID && !IS_FOREGROUND_IN_BLACKLIST {
-                        Some((id, reverse, false))
-                    } else {
-                        None
-                    };
-                    if let Some(msg) = action {
-                        send_action_message = Some(msg);
+                    if id == SWITCH_APPS_HOTKEY_ID
+                        || (id == SWITCH_WINDOWS_HOTKEY_ID && !IS_FOREGROUND_IN_BLACKLIST)
+                    {
+                        send_action_message = Some((id, reverse, false));
                         PREVIOUS_KEYCODE = scan_code;
                         break;
-                    }
+                    };
                 } else if scan_code == 0x01 && id == SWITCH_APPS_HOTKEY_ID {
                     send_action_message = Some((id, 0, true));
                     PREVIOUS_KEYCODE = scan_code;
@@ -154,11 +149,12 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
     }
 
     if let Some((id, reverse, is_cancel)) = send_action_message {
-        if is_cancel {
-            send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_CANCEL, WPARAM(0), LPARAM(0));
-            return LRESULT(1);
-        } else if id == SWITCH_APPS_HOTKEY_ID {
-            send_message_timeout(WINDOW, WM_USER_SWITCH_APPS, WPARAM(0), LPARAM(reverse));
+        if id == SWITCH_APPS_HOTKEY_ID {
+            if is_cancel {
+                send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_CANCEL, WPARAM(0), LPARAM(0));
+            } else {
+                send_message_timeout(WINDOW, WM_USER_SWITCH_APPS, WPARAM(0), LPARAM(reverse));
+            }
             return LRESULT(1);
         } else if id == SWITCH_WINDOWS_HOTKEY_ID {
             send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS, WPARAM(0), LPARAM(reverse));

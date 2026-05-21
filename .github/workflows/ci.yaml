@@ -20,11 +20,8 @@ jobs:
       matrix:
         target:
         - x86_64-pc-windows-msvc
-        - i686-pc-windows-msvc
         include:
         - target: x86_64-pc-windows-msvc
-          os: windows-latest
-        - target: i686-pc-windows-msvc
           os: windows-latest
 
     runs-on: ${{matrix.os}}

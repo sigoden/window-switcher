@@ -161,35 +161,67 @@ fn get_aumid(hwnd: HWND) -> Option<String> {
     Some(propvar.to_string())
 }
 
-fn get_edge_pwa_aumid_info(hwnd: HWND) -> Option<String> {
-    let aumid = get_aumid(hwnd)?;
-    let pkg = aumid.strip_suffix("!App")?;
-    if pkg.is_empty() {
-        return None;
-    }
-    Some(pkg.to_string())
-}
-
-fn get_chrome_pwa_aumid_info(hwnd: HWND) -> Option<(String, String)> {
-    let aumid = get_aumid(hwnd)?;
-
-    let crx_prefix = "_crx_";
-    let idx = aumid.find(crx_prefix)?;
-    let after_crx = &aumid[idx + crx_prefix.len()..];
-
-    let (app_id, profile) = if let Some(dot_idx) = after_crx.find(".UserData.") {
-        (
-            &after_crx[..dot_idx],
-            &after_crx[dot_idx + ".UserData.".len()..],
-        )
-    } else {
-        (after_crx, "Default")
+fn get_edge_aumid_info(hwnd: HWND) -> (Option<String>, Option<String>) {
+    let aumid = match get_aumid(hwnd) {
+        Some(v) => v,
+        None => return (None, None),
     };
 
-    if app_id.is_empty() || profile.is_empty() {
-        return None;
+    if let Some(pkg) = aumid.strip_suffix("!App") {
+        if !pkg.is_empty() {
+            return (None, Some(pkg.to_string()));
+        }
+        return (None, None);
     }
-    Some((profile.to_string(), app_id.to_string()))
+
+    if aumid == "MSEdge" || aumid.is_empty() {
+        return (None, None);
+    }
+    if let Some(profile) = aumid.strip_prefix("MSEdge.UserData.") {
+        if !profile.is_empty() {
+            return (Some(profile.to_string()), None);
+        }
+    }
+    (None, None)
+}
+
+fn get_chrome_aumid_info(hwnd: HWND) -> (Option<String>, Option<String>) {
+    let aumid = match get_aumid(hwnd) {
+        Some(v) => v,
+        None => return (None, None),
+    };
+
+    let crx_prefix = "_crx_";
+    if let Some(idx) = aumid.find(crx_prefix) {
+        let after_crx = &aumid[idx + crx_prefix.len()..];
+        let (app_id, profile) = if let Some(dot_idx) = after_crx.find(".UserData.") {
+            (
+                &after_crx[..dot_idx],
+                &after_crx[dot_idx + ".UserData.".len()..],
+            )
+        } else {
+            (after_crx, "Default")
+        };
+        if !app_id.is_empty() && !profile.is_empty() {
+            let profile = if profile == "Default" {
+                None
+            } else {
+                Some(profile.to_string())
+            };
+            return (profile, Some(app_id.to_string()));
+        }
+        return (None, None);
+    }
+
+    if aumid == "Chrome" || aumid.is_empty() {
+        return (None, None);
+    }
+    if let Some(profile) = aumid.strip_prefix("Chrome.UserData.") {
+        if !profile.is_empty() {
+            return (Some(profile.to_string()), None);
+        }
+    }
+    (None, None)
 }
 
 fn is_app_id_match(full: &str, truncated: &str) -> bool {
@@ -209,7 +241,7 @@ fn is_app_id_match(full: &str, truncated: &str) -> bool {
     true
 }
 
-fn pwa_map_profile_dir(aumid_profile: &str) -> String {
+pub(crate) fn pwa_map_profile_dir(aumid_profile: &str) -> String {
     if let Some(num) = aumid_profile.strip_prefix("Profile") {
         if num.chars().all(|c| c.is_ascii_digit()) {
             return format!("Profile {}", num);
@@ -316,6 +348,8 @@ pub(crate) fn get_default_user_data_dir(module_path: &str) -> Option<String> {
     let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
     let browser_path = if module_path.to_lowercase().contains("chrome.exe") {
         r"Google\Chrome\User Data"
+    } else if module_path.to_lowercase().contains("msedge.exe") {
+        r"Microsoft\Edge\User Data"
     } else {
         return None;
     };
@@ -438,14 +472,19 @@ pub fn list_windows(
                 }
             }
             let key = if is_chrome_browser(&module_path) {
-                match get_chrome_pwa_aumid_info(hwnd) {
-                    Some((profile, app_id)) => format!("{}::{}::{}", module_path, profile, app_id),
-                    None => module_path.clone(),
+                match get_chrome_aumid_info(hwnd) {
+                    (Some(profile), Some(app_id)) => {
+                        format!("{}::{}::{}", module_path, profile, app_id)
+                    }
+                    (Some(profile), None) => format!("{}::{}", module_path, profile),
+                    (None, Some(app_id)) => format!("{}::Default::{}", module_path, app_id),
+                    (None, None) => module_path.clone(),
                 }
             } else if is_edge_browser(&module_path) {
-                match get_edge_pwa_aumid_info(hwnd) {
-                    Some(pkg) => format!("{}::appx::{}", module_path, pkg),
-                    None => module_path.clone(),
+                match get_edge_aumid_info(hwnd) {
+                    (None, Some(pkg)) => format!("{}::appx::{}", module_path, pkg),
+                    (Some(profile), None) => format!("{}::{}", module_path, profile),
+                    _ => module_path.clone(),
                 }
             } else {
                 module_path.clone()

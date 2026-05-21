@@ -57,6 +57,10 @@ pub fn get_app_icon(
         return icon;
     }
 
+    if let Some(icon) = get_browser_profile_icon(module_path) {
+        return icon;
+    }
+
     if module_path.starts_with("C:\\Program Files\\WindowsApps") {
         if let Some(icon) =
             get_appx_logo_path(module_path).and_then(|image_path| load_image_as_hicon(&image_path))
@@ -194,6 +198,34 @@ pub fn get_window_icon(hwnd: HWND) -> Option<HICON> {
         return unsafe { CopyIcon(HICON(ret as _)) }.ok();
     }
     None
+}
+
+fn get_browser_profile_icon(module_path: &str) -> Option<HICON> {
+    let parts: Vec<&str> = module_path.split("::").collect();
+    if parts.len() != 2 {
+        return None;
+    }
+    let exe_path = parts[0];
+    let profile = parts[1];
+
+    let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
+    let (user_data_dir, icon_file) = if exe_path.to_lowercase().contains("chrome.exe") {
+        (
+            PathBuf::from(&local_app_data).join(r"Google\Chrome\User Data"),
+            "Google Profile.ico",
+        )
+    } else if exe_path.to_lowercase().contains("msedge.exe") {
+        (
+            PathBuf::from(&local_app_data).join(r"Microsoft\Edge\User Data"),
+            "Edge Profile.ico",
+        )
+    } else {
+        return None;
+    };
+
+    let profile_dir = super::window::pwa_map_profile_dir(profile);
+    let icon_path = user_data_dir.join(&profile_dir).join(icon_file);
+    load_image_as_hicon(&icon_path)
 }
 
 fn get_pwa_icon_from_lnk(module_path: &str) -> Option<HICON> {

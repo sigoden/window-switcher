@@ -3,12 +3,16 @@ use crate::utils::is_process_elevated;
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use std::{ffi::c_void, mem::size_of, path::PathBuf};
-use windows::core::{BOOL, PWSTR};
+use windows::core::{BOOL, PCWSTR, PWSTR};
 use windows::Win32::{
-    Foundation::{HWND, LPARAM, MAX_PATH, POINT, RECT},
+    Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, HWND, LPARAM, MAX_PATH, POINT, RECT},
     Graphics::{
         Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL},
         Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
+    },
+    Storage::{
+        EnhancedStorage::PKEY_AppUserModel_ID,
+        Packaging::Appx::{GetPackagePathByFullName, GetPackagesByPackageFamily},
     },
     System::{
         LibraryLoader::GetModuleFileNameW,
@@ -19,6 +23,7 @@ use windows::Win32::{
     },
     UI::{
         Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_MOUSE},
+        Shell::PropertiesSystem::{IPropertyStore, SHGetPropertyStoreForWindow},
         WindowsAndMessaging::{
             EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
             GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
@@ -140,6 +145,188 @@ pub fn get_module_path(pid: u32) -> Option<String> {
     Some(module_path)
 }
 
+fn is_chrome_browser(module_path: &str) -> bool {
+    let lower = module_path.to_lowercase();
+    lower.ends_with("chrome.exe")
+}
+
+fn is_edge_browser(module_path: &str) -> bool {
+    let lower = module_path.to_lowercase();
+    lower.ends_with("msedge.exe")
+}
+
+fn get_aumid(hwnd: HWND) -> Option<String> {
+    let store: IPropertyStore = unsafe { SHGetPropertyStoreForWindow(hwnd).ok()? };
+    let propvar = unsafe { store.GetValue(&PKEY_AppUserModel_ID).ok()? };
+    Some(propvar.to_string())
+}
+
+fn get_edge_pwa_aumid_info(hwnd: HWND) -> Option<String> {
+    let aumid = get_aumid(hwnd)?;
+    let pkg = aumid.strip_suffix("!App")?;
+    if pkg.is_empty() {
+        return None;
+    }
+    Some(pkg.to_string())
+}
+
+fn get_chrome_pwa_aumid_info(hwnd: HWND) -> Option<(String, String)> {
+    let aumid = get_aumid(hwnd)?;
+
+    let crx_prefix = "_crx_";
+    let idx = aumid.find(crx_prefix)?;
+    let after_crx = &aumid[idx + crx_prefix.len()..];
+
+    let (app_id, profile) = if let Some(dot_idx) = after_crx.find(".UserData.") {
+        (
+            &after_crx[..dot_idx],
+            &after_crx[dot_idx + ".UserData.".len()..],
+        )
+    } else {
+        (after_crx, "Default")
+    };
+
+    if app_id.is_empty() || profile.is_empty() {
+        return None;
+    }
+    Some((profile.to_string(), app_id.to_string()))
+}
+
+fn is_app_id_match(full: &str, truncated: &str) -> bool {
+    if full.eq_ignore_ascii_case(truncated) {
+        return true;
+    }
+    let mut chars = full.chars();
+    for tc in truncated.chars() {
+        loop {
+            match chars.next() {
+                Some(fc) if fc == tc => break,
+                Some(_) => continue,
+                None => return false,
+            }
+        }
+    }
+    true
+}
+
+fn pwa_map_profile_dir(aumid_profile: &str) -> String {
+    if let Some(num) = aumid_profile.strip_prefix("Profile") {
+        if num.chars().all(|c| c.is_ascii_digit()) {
+            return format!("Profile {}", num);
+        }
+    }
+    aumid_profile.to_string()
+}
+
+pub(crate) fn pwa_find_lnk_path(
+    user_data_dir: &str,
+    profile: &str,
+    app_id: &str,
+) -> Option<PathBuf> {
+    let profile_dir = pwa_map_profile_dir(profile);
+    let web_apps_dir = PathBuf::from(user_data_dir)
+        .join(&profile_dir)
+        .join("Web Applications");
+    if !web_apps_dir.is_dir() {
+        return None;
+    }
+    for entry in std::fs::read_dir(&web_apps_dir).ok()?.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let dir_name = entry.file_name().to_string_lossy().to_string();
+        let dir_app_id = dir_name.strip_prefix("_crx_").unwrap_or(&dir_name);
+        if is_app_id_match(dir_app_id, app_id) {
+            for lnk_entry in std::fs::read_dir(entry.path()).ok()?.flatten() {
+                let path = lnk_entry.path();
+                if path.extension().map(|e| e.to_string_lossy().to_lowercase())
+                    == Some("lnk".into())
+                {
+                    return Some(path);
+                }
+            }
+            return None;
+        }
+    }
+    None
+}
+
+pub(crate) fn find_appx_pkg_dir(package_family_name: &str) -> Option<String> {
+    unsafe {
+        let pfn: Vec<u16> = package_family_name.encode_utf16().chain(Some(0)).collect();
+
+        let mut count = 0u32;
+        let mut buffer_len = 0u32;
+
+        let rc = GetPackagesByPackageFamily(
+            PCWSTR(pfn.as_ptr()),
+            &mut count,
+            None,
+            &mut buffer_len,
+            None,
+        );
+
+        if rc.0 != ERROR_INSUFFICIENT_BUFFER.0 {
+            return None;
+        }
+
+        let mut names = vec![PWSTR::null(); count as usize];
+        let mut buffer = vec![0u16; buffer_len as usize];
+
+        if GetPackagesByPackageFamily(
+            PCWSTR(pfn.as_ptr()),
+            &mut count,
+            Some(names.as_mut_ptr()),
+            &mut buffer_len,
+            Some(PWSTR(buffer.as_mut_ptr())),
+        )
+        .0 != ERROR_SUCCESS.0
+        {
+            return None;
+        }
+
+        for name in names {
+            let full_name = name.to_string().ok()?;
+            let full_w: Vec<u16> = full_name.encode_utf16().chain(Some(0)).collect();
+
+            let mut path_len = 0u32;
+
+            let _ = GetPackagePathByFullName(PCWSTR(full_w.as_ptr()), &mut path_len, None);
+
+            let mut path_buf = vec![0u16; path_len as usize];
+
+            if GetPackagePathByFullName(
+                PCWSTR(full_w.as_ptr()),
+                &mut path_len,
+                Some(PWSTR(path_buf.as_mut_ptr())),
+            )
+            .0 != ERROR_SUCCESS.0
+            {
+                continue;
+            }
+
+            let path = String::from_utf16_lossy(&path_buf[..(path_len as usize - 1)]);
+            return Some(path);
+        }
+    }
+    None
+}
+
+pub(crate) fn get_default_user_data_dir(module_path: &str) -> Option<String> {
+    let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
+    let browser_path = if module_path.to_lowercase().contains("chrome.exe") {
+        r"Google\Chrome\User Data"
+    } else {
+        return None;
+    };
+    Some(
+        PathBuf::from(local_app_data)
+            .join(browser_path)
+            .to_string_lossy()
+            .to_string(),
+    )
+}
+
 pub fn get_window_exe(hwnd: HWND) -> Option<String> {
     let pid = get_window_pid(hwnd);
     if pid == 0 {
@@ -250,7 +437,20 @@ pub fn list_windows(
                     continue;
                 }
             }
-            result.entry(module_path).or_default().push((hwnd, title));
+            let key = if is_chrome_browser(&module_path) {
+                match get_chrome_pwa_aumid_info(hwnd) {
+                    Some((profile, app_id)) => format!("{}::{}::{}", module_path, profile, app_id),
+                    None => module_path.clone(),
+                }
+            } else if is_edge_browser(&module_path) {
+                match get_edge_pwa_aumid_info(hwnd) {
+                    Some(pkg) => format!("{}::appx::{}", module_path, pkg),
+                    None => module_path.clone(),
+                }
+            } else {
+                module_path.clone()
+            };
+            result.entry(key).or_default().push((hwnd, title));
         }
     }
     debug!("list windows {result:?}");

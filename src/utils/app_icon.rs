@@ -53,6 +53,10 @@ pub fn get_app_icon(
         }
     }
 
+    if let Some(icon) = get_pwa_icon_from_lnk(module_path) {
+        return icon;
+    }
+
     if module_path.starts_with("C:\\Program Files\\WindowsApps") {
         if let Some(icon) =
             get_appx_logo_path(module_path).and_then(|image_path| load_image_as_hicon(&image_path))
@@ -61,7 +65,8 @@ pub fn get_app_icon(
         }
     }
 
-    get_exe_icon(module_path)
+    let base_path = module_path.split("::").next().unwrap_or(module_path);
+    get_exe_icon(base_path)
         .or_else(|| get_window_icon(hwnd))
         .unwrap_or_else(fallback_icon)
 }
@@ -70,12 +75,22 @@ fn get_appx_logo_path(module_path: &str) -> Option<PathBuf> {
     let module_path = PathBuf::from(module_path);
     let executable = module_path.file_name()?.to_string_lossy();
     let module_dir = module_path.parent()?;
-    let manifest_path = module_dir.join("AppxManifest.xml");
+    let logo_value = read_appx_logo_value(module_dir, Some(&executable))?;
+    resolve_appx_logo_path(module_dir, &logo_value)
+}
+
+fn get_appx_logo_from_dir(package_dir: &Path) -> Option<PathBuf> {
+    let logo_value = read_appx_logo_value(package_dir, None)?;
+    resolve_appx_logo_path(package_dir, &logo_value)
+}
+
+fn read_appx_logo_value(manifest_dir: &Path, executable: Option<&str>) -> Option<String> {
+    let manifest_path = manifest_dir.join("AppxManifest.xml");
     let manifest_file = File::open(manifest_path).ok()?;
-    let manifest_file = BufReader::new(manifest_file); // Buffering is important for performance
+    let manifest_file = BufReader::new(manifest_file);
     let reader = EventReader::new(manifest_file);
     let mut logo_value = None;
-    let mut matched = false;
+    let mut matched = executable.is_none();
     let mut paths = vec![];
     let mut depth = 0;
     for e in reader {
@@ -88,9 +103,11 @@ fn get_appx_logo_path(module_path: &str) -> Option<PathBuf> {
                 }
                 let xpath = paths.join("/");
                 if xpath == "Package/Applications/Application" {
-                    matched = attributes
-                        .iter()
-                        .any(|v| v.name.local_name == "Executable" && v.value == executable);
+                    if let Some(exe) = executable {
+                        matched = attributes
+                            .iter()
+                            .any(|v| v.name.local_name == "Executable" && v.value == exe);
+                    }
                 } else if xpath == "Package/Applications/Application/VisualElements" && matched {
                     if let Some(value) = attributes
                         .iter()
@@ -112,13 +129,15 @@ fn get_appx_logo_path(module_path: &str) -> Option<PathBuf> {
                 }
                 depth -= 1;
             }
-            Err(_) => {
-                break;
-            }
+            Err(_) => break,
             _ => {}
         }
     }
-    let logo_path = module_dir.join(logo_value?);
+    logo_value
+}
+
+fn resolve_appx_logo_path(base_dir: &Path, logo_value: &str) -> Option<PathBuf> {
+    let logo_path = base_dir.join(logo_value);
     let extension = format!(".{}", logo_path.extension()?.to_string_lossy());
     let logo_path = logo_path.display().to_string();
     let prefix = &logo_path[0..(logo_path.len() - extension.len())];
@@ -175,6 +194,26 @@ pub fn get_window_icon(hwnd: HWND) -> Option<HICON> {
         return unsafe { CopyIcon(HICON(ret as _)) }.ok();
     }
     None
+}
+
+fn get_pwa_icon_from_lnk(module_path: &str) -> Option<HICON> {
+    let parts: Vec<&str> = module_path.split("::").collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let exe_path = parts[0];
+    let typ = parts[1];
+    let app_id = parts[2];
+
+    if typ == "appx" {
+        let package_dir = super::window::find_appx_pkg_dir(app_id)?;
+        let logo_path = get_appx_logo_from_dir(&PathBuf::from(package_dir))?;
+        load_image_as_hicon(&logo_path)
+    } else {
+        let user_data_dir = super::window::get_default_user_data_dir(exe_path)?;
+        let lnk_path = super::window::pwa_find_lnk_path(&user_data_dir, typ, app_id)?;
+        get_exe_icon(&lnk_path.to_string_lossy())
+    }
 }
 
 fn get_exe_icon(module_path: &str) -> Option<HICON> {

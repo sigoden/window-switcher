@@ -53,6 +53,10 @@ pub fn get_app_icon(
         }
     }
 
+    if let Some(icon) = get_pwa_icon_from_lnk(module_path) {
+        return icon;
+    }
+
     if module_path.starts_with("C:\\Program Files\\WindowsApps") {
         if let Some(icon) =
             get_appx_logo_path(module_path).and_then(|image_path| load_image_as_hicon(&image_path))
@@ -61,7 +65,8 @@ pub fn get_app_icon(
         }
     }
 
-    get_exe_icon(module_path)
+    let base_path = module_path.split("::").next().unwrap_or(module_path);
+    get_exe_icon(base_path)
         .or_else(|| get_window_icon(hwnd))
         .unwrap_or_else(fallback_icon)
 }
@@ -175,6 +180,20 @@ pub fn get_window_icon(hwnd: HWND) -> Option<HICON> {
         return unsafe { CopyIcon(HICON(ret as _)) }.ok();
     }
     None
+}
+
+fn get_pwa_icon_from_lnk(module_path: &str) -> Option<HICON> {
+    let parts: Vec<&str> = module_path.split("::").collect();
+    if parts.len() != 3 {
+        return None;
+    }
+    let exe_path = parts[0];
+    let profile = parts[1];
+    let app_id = parts[2];
+
+    let user_data_dir = super::window::get_default_user_data_dir(exe_path)?;
+    let lnk_path = super::window::pwa_find_lnk_path(&user_data_dir, profile, app_id)?;
+    get_exe_icon(&lnk_path.to_string_lossy())
 }
 
 fn get_exe_icon(module_path: &str) -> Option<HICON> {

@@ -10,6 +10,7 @@ use windows::Win32::{
         Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL},
         Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
     },
+    Storage::EnhancedStorage::PKEY_AppUserModel_ID,
     System::{
         LibraryLoader::GetModuleFileNameW,
         Threading::{
@@ -19,6 +20,7 @@ use windows::Win32::{
     },
     UI::{
         Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_MOUSE},
+        Shell::PropertiesSystem::IPropertyStore,
         WindowsAndMessaging::{
             EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
             GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
@@ -140,6 +142,112 @@ pub fn get_module_path(pid: u32) -> Option<String> {
     Some(module_path)
 }
 
+fn is_chrome_browser(module_path: &str) -> bool {
+    let lower = module_path.to_lowercase();
+    lower.ends_with("chrome.exe")
+}
+
+fn get_pwa_aumid_info(hwnd: HWND) -> Option<(String, String)> {
+    let store: IPropertyStore = unsafe {
+        windows::Win32::UI::Shell::PropertiesSystem::SHGetPropertyStoreForWindow(hwnd).ok()?
+    };
+
+    let propvar = unsafe { store.GetValue(&PKEY_AppUserModel_ID).ok()? };
+    let aumid: String = propvar.to_string();
+
+    let crx_prefix = "_crx_";
+    let idx = aumid.find(crx_prefix)?;
+    let after_crx = &aumid[idx + crx_prefix.len()..];
+
+    let (app_id, profile) = if let Some(dot_idx) = after_crx.find(".UserData.") {
+        (
+            &after_crx[..dot_idx],
+            &after_crx[dot_idx + ".UserData.".len()..],
+        )
+    } else {
+        (after_crx, "Default")
+    };
+
+    if app_id.is_empty() || profile.is_empty() {
+        return None;
+    }
+    Some((profile.to_string(), app_id.to_string()))
+}
+
+fn is_app_id_match(full: &str, truncated: &str) -> bool {
+    if full.eq_ignore_ascii_case(truncated) {
+        return true;
+    }
+    let mut chars = full.chars();
+    for tc in truncated.chars() {
+        loop {
+            match chars.next() {
+                Some(fc) if fc == tc => break,
+                Some(_) => continue,
+                None => return false,
+            }
+        }
+    }
+    true
+}
+
+fn pwa_map_profile_dir(aumid_profile: &str) -> String {
+    if let Some(num) = aumid_profile.strip_prefix("Profile") {
+        if num.chars().all(|c| c.is_ascii_digit()) {
+            return format!("Profile {}", num);
+        }
+    }
+    aumid_profile.to_string()
+}
+
+pub(crate) fn pwa_find_lnk_path(
+    user_data_dir: &str,
+    profile: &str,
+    app_id: &str,
+) -> Option<PathBuf> {
+    let profile_dir = pwa_map_profile_dir(profile);
+    let web_apps_dir = PathBuf::from(user_data_dir)
+        .join(&profile_dir)
+        .join("Web Applications");
+    if !web_apps_dir.is_dir() {
+        return None;
+    }
+    for entry in std::fs::read_dir(&web_apps_dir).ok()?.flatten() {
+        if !entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            continue;
+        }
+        let dir_name = entry.file_name().to_string_lossy().to_string();
+        let dir_app_id = dir_name.strip_prefix("_crx_").unwrap_or(&dir_name);
+        if is_app_id_match(dir_app_id, app_id) {
+            for lnk_entry in std::fs::read_dir(entry.path()).ok()?.flatten() {
+                let path = lnk_entry.path();
+                if path.extension().map(|e| e.to_string_lossy().to_lowercase())
+                    == Some("lnk".into())
+                {
+                    return Some(path);
+                }
+            }
+            return None;
+        }
+    }
+    None
+}
+
+pub(crate) fn get_default_user_data_dir(module_path: &str) -> Option<String> {
+    let local_app_data = std::env::var("LOCALAPPDATA").ok()?;
+    let browser_path = if module_path.to_lowercase().contains("chrome.exe") {
+        r"Google\Chrome\User Data"
+    } else {
+        return None;
+    };
+    Some(
+        PathBuf::from(local_app_data)
+            .join(browser_path)
+            .to_string_lossy()
+            .to_string(),
+    )
+}
+
 pub fn get_window_exe(hwnd: HWND) -> Option<String> {
     let pid = get_window_pid(hwnd);
     if pid == 0 {
@@ -250,7 +358,15 @@ pub fn list_windows(
                     continue;
                 }
             }
-            result.entry(module_path).or_default().push((hwnd, title));
+            let key = if is_chrome_browser(&module_path) {
+                match get_pwa_aumid_info(hwnd) {
+                    Some((profile, app_id)) => format!("{}::{}::{}", module_path, profile, app_id),
+                    None => module_path.clone(),
+                }
+            } else {
+                module_path.clone()
+            };
+            result.entry(key).or_default().push((hwnd, title));
         }
     }
     debug!("list windows {result:?}");

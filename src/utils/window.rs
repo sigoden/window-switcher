@@ -3,14 +3,17 @@ use crate::utils::is_process_elevated;
 use anyhow::{anyhow, Result};
 use indexmap::IndexMap;
 use std::{ffi::c_void, mem::size_of, path::PathBuf};
-use windows::core::{BOOL, PWSTR};
+use windows::core::{BOOL, PCWSTR, PWSTR};
 use windows::Win32::{
-    Foundation::{HWND, LPARAM, MAX_PATH, POINT, RECT},
+    Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, HWND, LPARAM, MAX_PATH, POINT, RECT},
     Graphics::{
         Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL},
         Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
     },
-    Storage::EnhancedStorage::PKEY_AppUserModel_ID,
+    Storage::{
+        EnhancedStorage::PKEY_AppUserModel_ID,
+        Packaging::Appx::{GetPackagePathByFullName, GetPackagesByPackageFamily},
+    },
     System::{
         LibraryLoader::GetModuleFileNameW,
         Threading::{
@@ -20,7 +23,7 @@ use windows::Win32::{
     },
     UI::{
         Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_MOUSE},
-        Shell::PropertiesSystem::IPropertyStore,
+        Shell::PropertiesSystem::{IPropertyStore, SHGetPropertyStoreForWindow},
         WindowsAndMessaging::{
             EnumWindows, GetCursorPos, GetForegroundWindow, GetWindow, GetWindowLongPtrW,
             GetWindowPlacement, GetWindowTextW, GetWindowThreadProcessId, IsIconic,
@@ -147,13 +150,28 @@ fn is_chrome_browser(module_path: &str) -> bool {
     lower.ends_with("chrome.exe")
 }
 
-fn get_pwa_aumid_info(hwnd: HWND) -> Option<(String, String)> {
-    let store: IPropertyStore = unsafe {
-        windows::Win32::UI::Shell::PropertiesSystem::SHGetPropertyStoreForWindow(hwnd).ok()?
-    };
+fn is_edge_browser(module_path: &str) -> bool {
+    let lower = module_path.to_lowercase();
+    lower.ends_with("msedge.exe")
+}
 
+fn get_aumid(hwnd: HWND) -> Option<String> {
+    let store: IPropertyStore = unsafe { SHGetPropertyStoreForWindow(hwnd).ok()? };
     let propvar = unsafe { store.GetValue(&PKEY_AppUserModel_ID).ok()? };
-    let aumid: String = propvar.to_string();
+    Some(propvar.to_string())
+}
+
+fn get_edge_pwa_aumid_info(hwnd: HWND) -> Option<String> {
+    let aumid = get_aumid(hwnd)?;
+    let pkg = aumid.strip_suffix("!App")?;
+    if pkg.is_empty() {
+        return None;
+    }
+    Some(pkg.to_string())
+}
+
+fn get_chrome_pwa_aumid_info(hwnd: HWND) -> Option<(String, String)> {
+    let aumid = get_aumid(hwnd)?;
 
     let crx_prefix = "_crx_";
     let idx = aumid.find(crx_prefix)?;
@@ -228,6 +246,67 @@ pub(crate) fn pwa_find_lnk_path(
                 }
             }
             return None;
+        }
+    }
+    None
+}
+
+pub(crate) fn find_appx_pkg_dir(package_family_name: &str) -> Option<String> {
+    unsafe {
+        let pfn: Vec<u16> = package_family_name.encode_utf16().chain(Some(0)).collect();
+
+        let mut count = 0u32;
+        let mut buffer_len = 0u32;
+
+        let rc = GetPackagesByPackageFamily(
+            PCWSTR(pfn.as_ptr()),
+            &mut count,
+            None,
+            &mut buffer_len,
+            None,
+        );
+
+        if rc.0 != ERROR_INSUFFICIENT_BUFFER.0 {
+            return None;
+        }
+
+        let mut names = vec![PWSTR::null(); count as usize];
+        let mut buffer = vec![0u16; buffer_len as usize];
+
+        if GetPackagesByPackageFamily(
+            PCWSTR(pfn.as_ptr()),
+            &mut count,
+            Some(names.as_mut_ptr()),
+            &mut buffer_len,
+            Some(PWSTR(buffer.as_mut_ptr())),
+        )
+        .0 != ERROR_SUCCESS.0
+        {
+            return None;
+        }
+
+        for name in names {
+            let full_name = name.to_string().ok()?;
+            let full_w: Vec<u16> = full_name.encode_utf16().chain(Some(0)).collect();
+
+            let mut path_len = 0u32;
+
+            let _ = GetPackagePathByFullName(PCWSTR(full_w.as_ptr()), &mut path_len, None);
+
+            let mut path_buf = vec![0u16; path_len as usize];
+
+            if GetPackagePathByFullName(
+                PCWSTR(full_w.as_ptr()),
+                &mut path_len,
+                Some(PWSTR(path_buf.as_mut_ptr())),
+            )
+            .0 != ERROR_SUCCESS.0
+            {
+                continue;
+            }
+
+            let path = String::from_utf16_lossy(&path_buf[..(path_len as usize - 1)]);
+            return Some(path);
         }
     }
     None
@@ -359,8 +438,13 @@ pub fn list_windows(
                 }
             }
             let key = if is_chrome_browser(&module_path) {
-                match get_pwa_aumid_info(hwnd) {
+                match get_chrome_pwa_aumid_info(hwnd) {
                     Some((profile, app_id)) => format!("{}::{}::{}", module_path, profile, app_id),
+                    None => module_path.clone(),
+                }
+            } else if is_edge_browser(&module_path) {
+                match get_edge_pwa_aumid_info(hwnd) {
+                    Some(pkg) => format!("{}::appx::{}", module_path, pkg),
                     None => module_path.clone(),
                 }
             } else {

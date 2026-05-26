@@ -26,6 +26,7 @@ use windows::Win32::{
 static KEYBOARD_STATE: LazyLock<Mutex<Vec<HotKeyState>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 static mut WINDOW: HWND = HWND(0 as _);
 static mut IS_SHIFT_PRESSED: bool = false;
+static mut IS_SWITCHING_APPS: bool = false;
 static mut PREVIOUS_KEYCODE: u32 = 0;
 
 #[derive(Debug)]
@@ -136,7 +137,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
                         send_action_message = Some((id, 0, true));
                         PREVIOUS_KEYCODE = scan_code;
                         break;
-                    } else if [0x48, 0x4b, 0x4d, 0x50].contains(&scan_code) {
+                    } else if [0x48, 0x4b, 0x4d, 0x50].contains(&scan_code) && IS_SWITCHING_APPS {
                         // arrow keys
                         let reverse = if scan_code == 0x48 || scan_code == 0x4b {
                             1
@@ -155,6 +156,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
     for id in send_done_hotkeys {
         if id == SWITCH_APPS_HOTKEY_ID {
             send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_DONE, WPARAM(0), LPARAM(0));
+            IS_SWITCHING_APPS = false;
         } else if id == SWITCH_WINDOWS_HOTKEY_ID {
             send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS_DONE, WPARAM(0), LPARAM(0));
         }
@@ -164,12 +166,15 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
         if id == SWITCH_APPS_HOTKEY_ID {
             if is_cancel {
                 send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_CANCEL, WPARAM(0), LPARAM(0));
+                IS_SWITCHING_APPS = false;
             } else {
                 send_message_timeout(WINDOW, WM_USER_SWITCH_APPS, WPARAM(0), LPARAM(reverse));
+                IS_SWITCHING_APPS = true;
             }
             return LRESULT(1);
         } else if id == SWITCH_WINDOWS_HOTKEY_ID {
             send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS, WPARAM(0), LPARAM(reverse));
+            IS_SWITCHING_APPS = false;
             return LRESULT(1);
         }
     }

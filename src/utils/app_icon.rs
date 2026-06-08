@@ -22,9 +22,9 @@ use windows::{
             Controls::IImageList,
             Shell::{SHGetFileInfoW, SHGetImageList, SHFILEINFOW, SHGFI_SYSICONINDEX},
             WindowsAndMessaging::{
-                CopyIcon, CreateIconFromResourceEx, GetIconInfo, LoadIconW, LoadImageW,
-                SendMessageW, GCL_HICON, HICON, ICONINFO, ICON_BIG, IDI_APPLICATION, IMAGE_ICON,
-                LR_DEFAULTCOLOR, LR_DEFAULTSIZE, LR_LOADFROMFILE, WM_GETICON,
+                CopyIcon, CreateIconFromResourceEx, DestroyIcon, GetIconInfo, LoadIconW,
+                LoadImageW, SendMessageW, GCL_HICON, HICON, ICONINFO, ICON_BIG, IDI_APPLICATION,
+                IMAGE_ICON, LR_DEFAULTCOLOR, LR_DEFAULTSIZE, LR_LOADFROMFILE, WM_GETICON,
             },
         },
     },
@@ -182,13 +182,14 @@ pub fn load_image_as_hicon<T: AsRef<Path>>(image_path: T) -> Option<HICON> {
 }
 
 fn fallback_icon() -> HICON {
-    unsafe { LoadIconW(None, IDI_APPLICATION) }.unwrap_or_default()
+    let icon = unsafe { LoadIconW(None, IDI_APPLICATION) }.unwrap_or_default();
+    unsafe { CopyIcon(icon) }.unwrap_or_default()
 }
 
 pub fn get_window_icon(hwnd: HWND) -> Option<HICON> {
     let ret = unsafe { SendMessageW(hwnd, WM_GETICON, Some(WPARAM(ICON_BIG as _)), None) };
     if ret.0 != 0 {
-        return Some(HICON(ret.0 as _));
+        return unsafe { CopyIcon(HICON(ret.0 as _)) }.ok();
     }
     #[cfg(target_arch = "x86")]
     let ret = unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongW(hwnd, GCL_HICON) };
@@ -257,11 +258,14 @@ fn get_exe_icon(module_path: &str) -> Option<HICON> {
                     let r = list.GetIcon(info.iIcon, 1u32);
                     match r {
                         Ok(hicon) => {
-                            let (x, y) = get_icon_size(hicon)?;
-                            if x < 64 && y < 64 {
-                                return None;
+                            let size = get_icon_size(hicon);
+                            match size {
+                                Some((x, y)) if x >= 64 && y >= 64 => Some(hicon),
+                                _ => {
+                                    let _ = DestroyIcon(hicon);
+                                    None
+                                }
                             }
-                            Some(hicon)
                         }
                         Err(_) => None,
                     }

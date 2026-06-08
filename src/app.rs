@@ -1,7 +1,7 @@
 use crate::config::{edit_config_file, Config};
 use crate::foreground::ForegroundWatcher;
 use crate::keyboard::KeyboardListener;
-use crate::painter::{find_clicked_app_index, GdiAAPainter};
+use crate::painter::GdiAAPainter;
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
@@ -446,7 +446,7 @@ impl App {
 
     fn click(&mut self) {
         if let Some(state) = self.switch_apps_state.as_mut() {
-            if let Some(i) = find_clicked_app_index(state) {
+            if let Some(i) = self.painter.find_clicked_app_index(state) {
                 state.index = i;
                 self.do_switch_app();
             }

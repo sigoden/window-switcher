@@ -16,6 +16,12 @@ fn main() {
 }
 
 fn run() -> Result<()> {
+    unsafe {
+        let _ = windows::Win32::UI::HiDpi::SetProcessDpiAwarenessContext(
+            windows::Win32::UI::HiDpi::DPI_AWARENESS_CONTEXT_SYSTEM_AWARE,
+        );
+    }
+
     let config = load_config().unwrap_or_default();
     if let Some(log_file) = &config.log_file {
         let file = prepare_log_file(log_file).map_err(|err| {

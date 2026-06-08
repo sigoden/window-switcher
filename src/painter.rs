@@ -22,6 +22,7 @@ use windows::Win32::{
         },
     },
     UI::{
+        HiDpi::GetDpiForWindow,
         Input::KeyboardAndMouse::SetFocus,
         WindowsAndMessaging::{
             DrawIconEx, GetCursorPos, ShowWindow, UpdateLayeredWindow, DI_NORMAL, SW_HIDE, SW_SHOW,
@@ -35,9 +36,9 @@ pub const FG_DARK_COLOR: u32 = 0x3b3b3b;
 pub const BG_LIGHT_COLOR: u32 = 0xe0e0e0;
 pub const FG_LIGHT_COLOR: u32 = 0xf2f2f2;
 pub const ALPHA_MASK: u32 = 0xff000000;
-pub const ICON_SIZE: i32 = 64;
-pub const WINDOW_BORDER_SIZE: i32 = 10;
-pub const ICON_BORDER_SIZE: i32 = 4;
+pub const ICON_SIZE_BASE: i32 = 64;
+pub const WINDOW_BORDER_SIZE_BASE: i32 = 10;
+pub const ICON_BORDER_SIZE_BASE: i32 = 4;
 pub const SCALE_FACTOR: i32 = 6;
 
 // GDI Antialiasing Painter
@@ -72,6 +73,11 @@ impl GdiAAPainter {
     }
 
     pub fn paint(&mut self, state: &SwitchAppsState) {
+        let dpi_scale = get_dpi_scale(self.hwnd);
+        let icon_size_max = (ICON_SIZE_BASE as f64 * dpi_scale) as i32;
+        let border_size = (WINDOW_BORDER_SIZE_BASE as f64 * dpi_scale) as i32;
+        let icon_border = (ICON_BORDER_SIZE_BASE as f64 * dpi_scale) as i32;
+
         let Coordinate {
             x,
             y,
@@ -79,7 +85,12 @@ impl GdiAAPainter {
             height,
             icon_size,
             item_size,
-        } = Coordinate::new(state.apps.len() as i32);
+        } = Coordinate::new(
+            state.apps.len() as i32,
+            icon_size_max,
+            border_size,
+            icon_border,
+        );
 
         let corner_radius = if self.rounded_corner {
             item_size / 4
@@ -138,6 +149,7 @@ impl GdiAAPainter {
                 state,
                 hdc_screen,
                 icon_size,
+                icon_border,
                 icons_width,
                 icons_height,
                 corner_radius,
@@ -153,8 +165,8 @@ impl GdiAAPainter {
             GdipDrawImageRect(
                 graphics_ptr,
                 image_ptr,
-                WINDOW_BORDER_SIZE as f32,
-                WINDOW_BORDER_SIZE as f32,
+                border_size as f32,
+                border_size as f32,
                 icons_width as f32,
                 icons_height as f32,
             );
@@ -206,6 +218,40 @@ impl GdiAAPainter {
         }
         self.show = false;
     }
+
+    pub fn find_clicked_app_index(&self, state: &SwitchAppsState) -> Option<usize> {
+        let cursor_pos = unsafe {
+            let mut pos = POINT::default();
+            let _ = GetCursorPos(&mut pos);
+            pos
+        };
+
+        let dpi_scale = get_dpi_scale(self.hwnd);
+        let icon_size_max = (ICON_SIZE_BASE as f64 * dpi_scale) as i32;
+        let border_size = (WINDOW_BORDER_SIZE_BASE as f64 * dpi_scale) as i32;
+        let icon_border = (ICON_BORDER_SIZE_BASE as f64 * dpi_scale) as i32;
+
+        let Coordinate {
+            x, y, item_size, ..
+        } = Coordinate::new(
+            state.apps.len() as i32,
+            icon_size_max,
+            border_size,
+            icon_border,
+        );
+
+        let xpos = cursor_pos.x - x;
+        let ypos = cursor_pos.y - y;
+
+        let cy = border_size;
+        for (i, _) in state.apps.iter().enumerate() {
+            let cx = border_size + item_size * (i as i32);
+            if xpos >= cx && xpos < cx + item_size && ypos >= cy && ypos < cy + item_size {
+                return Some(i);
+            }
+        }
+        None
+    }
 }
 
 impl Drop for GdiAAPainter {
@@ -215,27 +261,6 @@ impl Drop for GdiAAPainter {
             GdiplusShutdown(self.token);
         }
     }
-}
-
-pub fn find_clicked_app_index(state: &SwitchAppsState) -> Option<usize> {
-    let Coordinate {
-        x, y, item_size, ..
-    } = Coordinate::new(state.apps.len() as i32);
-
-    let mut cursor_pos = POINT::default();
-    let _ = unsafe { GetCursorPos(&mut cursor_pos) };
-
-    let xpos = cursor_pos.x - x;
-    let ypos = cursor_pos.y - y;
-
-    let cy = WINDOW_BORDER_SIZE;
-    for (i, _) in state.apps.iter().enumerate() {
-        let cx = WINDOW_BORDER_SIZE + item_size * (i as i32);
-        if xpos >= cx && xpos < cx + item_size && ypos >= cy && ypos < cy + item_size {
-            return Some(i);
-        }
-    }
-    None
 }
 
 const fn theme_color(light_theme: bool) -> (u32, u32) {
@@ -305,6 +330,7 @@ fn draw_icons(
     state: &SwitchAppsState,
     hdc_screen: HDC,
     icon_size: i32,
+    icon_border: i32,
     width: i32,
     height: i32,
     corner_radius: i32,
@@ -314,7 +340,7 @@ fn draw_icons(
     let scaled_width = width * SCALE_FACTOR;
     let scaled_height = height * SCALE_FACTOR;
     let scaled_corner_radius = corner_radius * SCALE_FACTOR;
-    let scaled_border_size = ICON_BORDER_SIZE * SCALE_FACTOR;
+    let scaled_border_size = icon_border * SCALE_FACTOR;
     let scaled_icon_inner_size = icon_size * SCALE_FACTOR;
     let scaled_icon_outer_size = scaled_icon_inner_size + scaled_border_size * 2;
 
@@ -397,6 +423,17 @@ fn draw_icons(
     }
 }
 
+fn get_dpi_scale(hwnd: HWND) -> f64 {
+    unsafe {
+        let dpi = GetDpiForWindow(hwnd);
+        if dpi == 0 {
+            1.0
+        } else {
+            dpi as f64 / 96.0
+        }
+    }
+}
+
 struct Coordinate {
     x: i32,
     y: i32,
@@ -407,18 +444,17 @@ struct Coordinate {
 }
 
 impl Coordinate {
-    fn new(num_apps: i32) -> Self {
+    fn new(num_apps: i32, icon_size_max: i32, border_size: i32, icon_border: i32) -> Self {
         let monitor_rect = get_moinitor_rect();
         let monitor_width = monitor_rect.right - monitor_rect.left;
         let monitor_height = monitor_rect.bottom - monitor_rect.top;
 
-        let icon_size = ((monitor_width - 2 * WINDOW_BORDER_SIZE) / num_apps
-            - ICON_BORDER_SIZE * 2)
-            .min(ICON_SIZE);
+        let icon_size =
+            ((monitor_width - 2 * border_size) / num_apps - icon_border * 2).min(icon_size_max);
 
-        let item_size = icon_size + ICON_BORDER_SIZE * 2;
-        let width = item_size * num_apps + WINDOW_BORDER_SIZE * 2;
-        let height = item_size + WINDOW_BORDER_SIZE * 2;
+        let item_size = icon_size + icon_border * 2;
+        let width = item_size * num_apps + border_size * 2;
+        let height = item_size + border_size * 2;
         let x = monitor_rect.left + (monitor_width - width) / 2;
         let y = monitor_rect.top + (monitor_height - height) / 2;
 

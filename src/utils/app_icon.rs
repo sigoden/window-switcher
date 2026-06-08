@@ -24,8 +24,8 @@ use windows::{
             Shell::{SHGetFileInfoW, SHGetImageList, SHFILEINFOW, SHGFI_SYSICONINDEX},
             WindowsAndMessaging::{
                 CopyIcon, CreateIconFromResourceEx, DestroyIcon, GetIconInfo, LoadIconW,
-                LoadImageW, SendMessageTimeoutW, GCLP_HICONSM, GCL_HICON, HICON, ICONINFO,
-                ICON_BIG, IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LR_DEFAULTSIZE,
+                LoadImageW, SendMessageTimeoutW, GCLP_HICON, HICON, ICONINFO, ICON_BIG,
+                ICON_SMALL2, IDI_APPLICATION, IMAGE_ICON, LR_DEFAULTCOLOR, LR_DEFAULTSIZE,
                 LR_LOADFROMFILE, SMTO_ABORTIFHUNG, WM_GETICON,
             },
         },
@@ -205,19 +205,26 @@ pub fn get_window_icon(hwnd: HWND) -> Option<HICON> {
         return unsafe { CopyIcon(HICON(result as _)) }.ok();
     }
     #[cfg(target_arch = "x86")]
-    let ret = unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongW(hwnd, GCL_HICON) };
+    let ret = unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongW(hwnd, GCLP_HICON) };
     #[cfg(not(target_arch = "x86"))]
-    let ret = unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongPtrW(hwnd, GCL_HICON) };
+    let ret =
+        unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongPtrW(hwnd, GCLP_HICON) };
     if ret != 0 {
         return unsafe { CopyIcon(HICON(ret as _)) }.ok();
     }
-    #[cfg(target_arch = "x86")]
-    let ret = unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongW(hwnd, GCLP_HICONSM) };
-    #[cfg(not(target_arch = "x86"))]
-    let ret =
-        unsafe { windows::Win32::UI::WindowsAndMessaging::GetClassLongPtrW(hwnd, GCLP_HICONSM) };
-    if ret != 0 {
-        return unsafe { CopyIcon(HICON(ret as _)) }.ok();
+    let ret = unsafe {
+        SendMessageTimeoutW(
+            hwnd,
+            WM_GETICON,
+            WPARAM(ICON_SMALL2 as _),
+            LPARAM(0),
+            SMTO_ABORTIFHUNG,
+            250,
+            Some(&mut result),
+        )
+    };
+    if ret.0 != 0 && result != 0 {
+        return unsafe { CopyIcon(HICON(result as _)) }.ok();
     }
     None
 }
@@ -278,12 +285,17 @@ fn get_exe_icon(module_path: &str) -> Option<HICON> {
     let info = get_shfileinfo(module_path)?;
     for shil in [SHIL_JUMBO, SHIL_EXTRALARGE, SHIL_LARGE] {
         unsafe {
-            let list = SHGetImageList::<IImageList>(shil).ok()?;
-            let hicon = list.GetIcon(info.iIcon, 1u32).ok()?;
-            if is_valid_icon(hicon) {
-                return Some(hicon);
-            } else {
-                let _ = DestroyIcon(hicon);
+            let Some(list) = SHGetImageList::<IImageList>(shil).ok() else {
+                continue;
+            };
+            let Some(hicon) = list.GetIcon(info.iIcon, 1u32).ok() else {
+                continue;
+            };
+            match is_valid_icon(hicon) {
+                Some(true) => return Some(hicon),
+                _ => {
+                    let _ = DestroyIcon(hicon);
+                }
             }
         }
     }
@@ -323,11 +335,9 @@ fn get_shfileinfo(module_path: &str) -> Option<SHFILEINFOW> {
 /// while the rest is stretched/padded garbage — e.g. the icon of `hh.exe`
 /// (Windows's help viewer, reused by AutoHotKey, etc. to display their *.chm help).
 /// These look ugly in the switcher and are better replaced with a fallback icon.
-pub fn is_valid_icon(hicon: HICON) -> bool {
-    let Some(bounds) = get_icon_bounds(hicon) else {
-        return false;
-    };
-    !is_topleft_icon(&bounds)
+fn is_valid_icon(hicon: HICON) -> Option<bool> {
+    let bounds = get_icon_bounds(hicon)?;
+    Some(!is_topleft_icon(&bounds))
 }
 
 struct IconBounds {

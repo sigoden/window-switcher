@@ -25,6 +25,7 @@ pub struct Config {
     pub switch_apps_enable: bool,
     pub switch_apps_hotkey: Vec<Hotkey>,
     pub switch_apps_ignore_minimal: bool,
+    pub switch_apps_only_cursor_monitor_apps: bool,
     pub switch_apps_override_icons: IndexMap<String, String>,
     switch_apps_only_current_desktop: Option<bool>,
 }
@@ -52,6 +53,7 @@ impl Default for Config {
             )
             .unwrap()],
             switch_apps_ignore_minimal: false,
+            switch_apps_only_cursor_monitor_apps: false,
             switch_apps_override_icons: Default::default(),
             switch_apps_only_current_desktop: None,
         }
@@ -120,6 +122,12 @@ impl Config {
             }
             if let Some(v) = section.get("ignore_minimal").and_then(Config::to_bool) {
                 conf.switch_apps_ignore_minimal = v;
+            }
+            if let Some(v) = section
+                .get("only_cursor_monitor_apps")
+                .and_then(Config::to_bool)
+            {
+                conf.switch_apps_only_cursor_monitor_apps = v;
             }
             if let Some(v) = section.get("override_icons").map(normalize_path_value) {
                 conf.switch_apps_override_icons = v

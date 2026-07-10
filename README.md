@@ -61,6 +61,9 @@ hotkey = alt+tab
 # Ignore minimal windows
 ignore_minimal = no
 
+# Only show apps on the monitor containing the current cursor
+only_cursor_monitor_apps = no
+
 # Only switch apps within the current virtual desktops: yes/no/auto
 only_current_desktop = auto
 ```

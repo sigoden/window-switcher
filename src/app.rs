@@ -6,7 +6,8 @@ use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
     check_error, get_app_icon, get_foreground_window, get_window_user_data, is_iconic_window,
-    is_running_as_admin, list_windows, set_foreground_window, set_window_user_data,
+    is_running_as_admin, is_window_on_cursor_monitor, list_windows, set_foreground_window,
+    set_window_user_data,
 };
 
 use anyhow::{anyhow, Result};
@@ -408,7 +409,15 @@ impl App {
         )?;
         let mut apps = vec![];
         for (module_path, hwnds) in windows.iter() {
-            let module_hwnd = if is_iconic_window(hwnds[0].0) {
+            let module_hwnd = if self.config.switch_apps_only_cursor_monitor_apps {
+                match hwnds
+                    .iter()
+                    .find(|(hwnd, _)| is_window_on_cursor_monitor(*hwnd))
+                {
+                    Some((hwnd, _)) => *hwnd,
+                    None => continue,
+                }
+            } else if is_iconic_window(hwnds[0].0) {
                 hwnds[hwnds.len() - 1].0
             } else {
                 hwnds[0].0

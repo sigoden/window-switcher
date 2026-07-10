@@ -8,7 +8,10 @@ use windows::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, HWND, LPARAM, MAX_PATH, POINT, RECT},
     Graphics::{
         Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL},
-        Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
+        Gdi::{
+            GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITORINFO,
+            MONITOR_DEFAULTTONEAREST,
+        },
     },
     Storage::{
         EnhancedStorage::PKEY_AppUserModel_ID,
@@ -390,6 +393,16 @@ pub fn set_foreground_window(hwnd: HWND) {
 
 pub fn get_foreground_window() -> HWND {
     unsafe { GetForegroundWindow() }
+}
+
+pub fn is_window_on_cursor_monitor(hwnd: HWND) -> bool {
+    let mut cursor = POINT::default();
+    if unsafe { GetCursorPos(&mut cursor) }.is_err() {
+        return false;
+    }
+    let cursor_monitor = unsafe { MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST) };
+    let window_monitor = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+    cursor_monitor == window_monitor
 }
 
 pub fn get_window_title(hwnd: HWND) -> String {

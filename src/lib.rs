@@ -10,6 +10,7 @@ mod foreground;
 mod keyboard;
 mod painter;
 mod startup;
+mod thumbnail;
 mod trayicon;
 
 pub use crate::app::start;

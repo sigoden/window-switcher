@@ -1,4 +1,5 @@
 use crate::app::SwitchAppsState;
+use crate::thumbnail::capture_window_thumbnail;
 use crate::utils::{check_error, get_moinitor_rect, is_light_theme, is_win11};
 
 use anyhow::{Context, Result};
@@ -40,6 +41,9 @@ pub const ICON_SIZE_BASE: i32 = 64;
 pub const WINDOW_BORDER_SIZE_BASE: i32 = 10;
 pub const ICON_BORDER_SIZE_BASE: i32 = 4;
 pub const SCALE_FACTOR: i32 = 6;
+pub const THUMB_WIDTH_BASE: i32 = 256;
+pub const THUMB_HEIGHT_BASE: i32 = 144;
+pub const THUMB_BORDER_BASE: i32 = 8;
 
 // GDI Antialiasing Painter
 pub struct GdiAAPainter {
@@ -247,6 +251,187 @@ impl GdiAAPainter {
         for (i, _) in state.apps.iter().enumerate() {
             let cx = border_size + item_size * (i as i32);
             if xpos >= cx && xpos < cx + item_size && ypos >= cy && ypos < cy + item_size {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    pub fn paint_switch_windows(&mut self, windows: &[(HWND, String)], index: usize) {
+        if windows.is_empty() {
+            return;
+        }
+
+        let dpi_scale = get_dpi_scale(self.hwnd);
+        let border_size = (WINDOW_BORDER_SIZE_BASE as f64 * dpi_scale) as i32;
+        let thumb_border = (THUMB_BORDER_BASE as f64 * dpi_scale) as i32;
+
+        let coord = ThumbCoordinate::new(windows.len() as i32, border_size, thumb_border, dpi_scale);
+        let corner_radius = if self.rounded_corner {
+            coord.thumb_height / 8
+        } else {
+            0
+        };
+
+        let hwnd = self.hwnd;
+        let hdc_screen = self.hdc_screen;
+        let (fg_color, bg_color) = theme_color(is_light_theme());
+
+        unsafe {
+            let hdc_mem = CreateCompatibleDC(Some(hdc_screen));
+            let bitmap_mem = CreateCompatibleBitmap(hdc_screen, coord.width, coord.height);
+            SelectObject(hdc_mem, bitmap_mem.into());
+
+            let mut graphics = GpGraphics::default();
+            let mut graphics_ptr: *mut GpGraphics = &mut graphics;
+            GdipCreateFromHDC(hdc_mem, &mut graphics_ptr as _);
+            GdipSetSmoothingMode(graphics_ptr, SmoothingModeAntiAlias);
+            GdipSetInterpolationMode(graphics_ptr, InterpolationModeHighQualityBicubic);
+
+            let mut bg_pen = GpPen::default();
+            let mut bg_pen_ptr: *mut GpPen = &mut bg_pen;
+            GdipCreatePen1(ALPHA_MASK | bg_color, 0.0, Unit(0), &mut bg_pen_ptr as _);
+
+            let mut bg_brush = GpBrush::default();
+            let mut bg_brush_ptr: *mut GpBrush = &mut bg_brush;
+            GdipGetPenBrushFill(bg_pen_ptr, &mut bg_brush_ptr as _);
+
+            if self.rounded_corner {
+                draw_round_rect(
+                    graphics_ptr,
+                    bg_brush_ptr,
+                    0.0,
+                    0.0,
+                    coord.width as f32,
+                    coord.height as f32,
+                    corner_radius as f32,
+                );
+            } else {
+                GdipFillRectangle(
+                    graphics_ptr,
+                    bg_brush_ptr,
+                    0.0,
+                    0.0,
+                    coord.width as f32,
+                    coord.height as f32,
+                );
+            }
+
+            let fg_brush = CreateSolidBrush(COLORREF(fg_color));
+
+            for (i, (hwin, _)) in windows.iter().enumerate() {
+                let cx = coord.border_size + coord.thumb_item_width * (i as i32);
+                let cy = coord.border_size;
+
+                let thumbnail = capture_window_thumbnail(
+                    *hwin,
+                    hdc_screen,
+                    coord.thumb_width,
+                    coord.thumb_height,
+                );
+
+                let mut bitmap = GpBitmap::default();
+                let mut bitmap_ptr: *mut GpBitmap = &mut bitmap;
+                GdipCreateBitmapFromHBITMAP(thumbnail, HPALETTE::default(), &mut bitmap_ptr as _);
+                let image_ptr: *mut GpImage = bitmap_ptr as *mut GpImage;
+
+                if i == index {
+                    let rgn = CreateRoundRectRgn(
+                        cx,
+                        cy,
+                        cx + coord.thumb_item_width,
+                        cy + coord.thumb_item_height,
+                        corner_radius,
+                        corner_radius,
+                    );
+                    let _ = FillRgn(hdc_mem, rgn, fg_brush);
+                    let _ = DeleteObject(rgn.into());
+                }
+
+                GdipDrawImageRect(
+                    graphics_ptr,
+                    image_ptr,
+                    (cx + thumb_border) as f32,
+                    (cy + thumb_border) as f32,
+                    coord.thumb_width as f32,
+                    coord.thumb_height as f32,
+                );
+
+                GdipDisposeImage(image_ptr);
+                let _ = DeleteObject(thumbnail.into());
+            }
+
+            let _ = DeleteObject(fg_brush.into());
+            GdipDeleteBrush(bg_brush_ptr);
+            GdipDeletePen(bg_pen_ptr);
+            GdipDeleteGraphics(graphics_ptr);
+
+            let blend = BLENDFUNCTION {
+                BlendOp: AC_SRC_OVER as _,
+                SourceConstantAlpha: 255,
+                AlphaFormat: AC_SRC_ALPHA as _,
+                ..Default::default()
+            };
+            let _ = UpdateLayeredWindow(
+                hwnd,
+                Some(hdc_screen),
+                Some(&POINT { x: coord.x, y: coord.y }),
+                Some(&SIZE {
+                    cx: coord.width,
+                    cy: coord.height,
+                }),
+                Some(hdc_mem),
+                Some(&POINT::default()),
+                COLORREF(0),
+                Some(&blend),
+                ULW_ALPHA,
+            );
+
+            let _ = DeleteObject(bitmap_mem.into());
+            let _ = DeleteDC(hdc_mem);
+        }
+
+        if self.show {
+            return;
+        }
+        unsafe {
+            let _ = ShowWindow(self.hwnd, SW_SHOW);
+            let _ = SetFocus(Some(self.hwnd));
+        }
+        self.show = true;
+    }
+
+    pub fn unpaint_switch_windows(&mut self) {
+        unsafe {
+            let _ = ShowWindow(self.hwnd, SW_HIDE);
+        }
+        self.show = false;
+    }
+
+    pub fn find_clicked_switch_windows_index(&self, windows_len: usize) -> Option<usize> {
+        let cursor_pos = unsafe {
+            let mut pos = POINT::default();
+            let _ = GetCursorPos(&mut pos);
+            pos
+        };
+
+        let dpi_scale = get_dpi_scale(self.hwnd);
+        let border_size = (WINDOW_BORDER_SIZE_BASE as f64 * dpi_scale) as i32;
+        let thumb_border = (THUMB_BORDER_BASE as f64 * dpi_scale) as i32;
+
+        let coord = ThumbCoordinate::new(windows_len as i32, border_size, thumb_border, dpi_scale);
+
+        let xpos = cursor_pos.x - coord.x;
+        let ypos = cursor_pos.y - coord.y;
+
+        for i in 0..windows_len {
+            let cx = coord.border_size + coord.thumb_item_width * (i as i32);
+            let cy = coord.border_size;
+            if xpos >= cx
+                && xpos < cx + coord.thumb_item_width
+                && ypos >= cy
+                && ypos < cy + coord.thumb_item_height
+            {
                 return Some(i);
             }
         }
@@ -465,6 +650,53 @@ impl Coordinate {
             height,
             icon_size,
             item_size,
+        }
+    }
+}
+
+struct ThumbCoordinate {
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    thumb_width: i32,
+    thumb_height: i32,
+    thumb_item_width: i32,
+    thumb_item_height: i32,
+    border_size: i32,
+}
+
+impl ThumbCoordinate {
+    fn new(num_items: i32, border_size: i32, thumb_border: i32, dpi_scale: f64) -> Self {
+        let monitor_rect = get_moinitor_rect();
+        let monitor_width = monitor_rect.right - monitor_rect.left;
+        let monitor_height = monitor_rect.bottom - monitor_rect.top;
+
+        let thumb_width_max = (THUMB_WIDTH_BASE as f64 * dpi_scale) as i32;
+        let thumb_height_max = (THUMB_HEIGHT_BASE as f64 * dpi_scale) as i32;
+
+        let thumb_width =
+            ((monitor_width - 2 * border_size) / num_items - thumb_border * 2).min(thumb_width_max);
+        let thumb_height = thumb_width * thumb_height_max / thumb_width_max;
+
+        let thumb_item_width = thumb_width + thumb_border * 2;
+        let thumb_item_height = thumb_height + thumb_border * 2;
+
+        let width = thumb_item_width * num_items + border_size * 2;
+        let height = thumb_item_height + border_size * 2;
+        let x = monitor_rect.left + (monitor_width - width) / 2;
+        let y = monitor_rect.top + (monitor_height - height) / 2;
+
+        Self {
+            x,
+            y,
+            width,
+            height,
+            thumb_width,
+            thumb_height,
+            thumb_item_width,
+            thumb_item_height,
+            border_size,
         }
     }
 }

@@ -85,6 +85,8 @@ impl App {
             switch_windows_state: SwitchWindowsState {
                 cache: None,
                 modifier_released: true,
+                overlay_windows: None,
+                overlay_index: 0,
             },
             switch_apps_state: None,
             cached_icons: Default::default(),
@@ -246,12 +248,17 @@ impl App {
                     .as_ref()
                     .and_then(|state| state.apps.get(state.index).map(|(_, id)| *id))
                     .unwrap_or_else(get_foreground_window);
-                app.switch_windows(hwnd, reverse)?;
+                if app.config.switch_windows_thumbnail_preview {
+                    app.switch_windows_overlay(hwnd, reverse)?;
+                } else {
+                    app.switch_windows(hwnd, reverse)?;
+                }
                 app.cancel_switch_app();
             }
             WM_USER_SWITCH_WINDOWS_DONE => {
                 debug!("message WM_USER_SWITCH_WINDOWS_DONE");
                 let app = get_app(hwnd)?;
+                app.do_switch_windows();
                 app.switch_windows_state.modifier_released = true;
             }
             WM_NCHITTEST => {
@@ -260,6 +267,7 @@ impl App {
             WM_LBUTTONUP => {
                 let app = get_app(hwnd)?;
                 app.click();
+                app.click_switch_windows();
             }
             WM_COMMAND => {
                 let value = wparam.0 as u32;
@@ -373,10 +381,95 @@ impl App {
                 self.switch_windows_state = SwitchWindowsState {
                     cache: Some((module_path.clone(), state_id, index, state_windows)),
                     modifier_released: false,
+                    overlay_windows: None,
+                    overlay_index: 0,
                 };
                 set_foreground_window(hwnd);
 
                 Ok(true)
+            }
+        }
+    }
+
+    fn switch_windows_overlay(&mut self, hwnd: HWND, reverse: bool) -> Result<bool> {
+        if let Some(overlay) = self.switch_windows_state.overlay_windows.as_mut() {
+            let len = overlay.len();
+            if len > 1 {
+                if reverse {
+                    self.switch_windows_state.overlay_index =
+                        if self.switch_windows_state.overlay_index == 0 {
+                            len - 1
+                        } else {
+                            self.switch_windows_state.overlay_index - 1
+                        };
+                } else {
+                    self.switch_windows_state.overlay_index =
+                        if self.switch_windows_state.overlay_index >= len - 1 {
+                            0
+                        } else {
+                            self.switch_windows_state.overlay_index + 1
+                        };
+                }
+                let idx = self.switch_windows_state.overlay_index;
+                let windows = self.switch_windows_state.overlay_windows.as_ref().unwrap();
+                self.painter.paint_switch_windows(windows, idx);
+                return Ok(true);
+            }
+            return Ok(false);
+        }
+
+        let windows = list_windows(
+            self.config.switch_windows_ignore_minimal,
+            self.config.switch_windows_only_current_desktop(),
+            self.is_admin,
+        )?;
+        let module_path = match windows
+            .iter()
+            .find(|(_, v)| v.iter().any(|(id, _)| *id == hwnd))
+            .map(|(k, _)| k.clone())
+        {
+            Some(v) => v,
+            None => return Ok(false),
+        };
+        let window_list = match windows.get(&module_path) {
+            Some(v) => v,
+            None => return Ok(false),
+        };
+        if window_list.len() == 1 {
+            return Ok(false);
+        }
+
+        let overlay: Vec<(HWND, String)> = window_list
+            .iter()
+            .map(|(h, title)| (*h, title.clone()))
+            .collect();
+
+        let index = if reverse { overlay.len() - 1 } else { 1 };
+
+        self.switch_windows_state.overlay_windows = Some(overlay.clone());
+        self.switch_windows_state.overlay_index = index;
+
+        self.painter.paint_switch_windows(&overlay, index);
+        self.cancel_switch_app();
+
+        Ok(true)
+    }
+
+    fn do_switch_windows(&mut self) {
+        if let Some(overlay) = self.switch_windows_state.overlay_windows.take() {
+            if let Some((hwnd, _)) = overlay.get(self.switch_windows_state.overlay_index) {
+                set_foreground_window(*hwnd);
+            }
+            self.painter.unpaint_switch_windows();
+        }
+    }
+
+    fn click_switch_windows(&mut self) {
+        if self.switch_windows_state.overlay_windows.is_some() {
+            let windows_len = self.switch_windows_state.overlay_windows.as_ref().unwrap().len();
+            if let Some(i) = self.painter.find_clicked_switch_windows_index(windows_len) {
+                self.switch_windows_state.overlay_index = i;
+                self.do_switch_windows();
             }
         }
     }
@@ -492,6 +585,8 @@ fn get_app(hwnd: HWND) -> Result<&'static mut App> {
 struct SwitchWindowsState {
     cache: Option<(String, HWND, usize, Vec<isize>)>,
     modifier_released: bool,
+    overlay_windows: Option<Vec<(HWND, String)>>,
+    overlay_index: usize,
 }
 
 #[derive(Debug)]

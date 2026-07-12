@@ -21,6 +21,7 @@ pub struct Config {
     pub switch_windows_hotkey: Vec<Hotkey>,
     pub switch_windows_blacklist: HashSet<String>,
     pub switch_windows_ignore_minimal: bool,
+    pub switch_windows_thumbnail_preview: bool,
     switch_windows_only_current_desktop: Option<bool>,
     pub switch_apps_enable: bool,
     pub switch_apps_hotkey: Vec<Hotkey>,
@@ -43,6 +44,7 @@ impl Default for Config {
             .unwrap()],
             switch_windows_blacklist: Default::default(),
             switch_windows_ignore_minimal: false,
+            switch_windows_thumbnail_preview: true,
             switch_windows_only_current_desktop: None,
             switch_apps_enable: false,
             switch_apps_hotkey: vec![Hotkey::create(
@@ -100,6 +102,12 @@ impl Config {
             }
             if let Some(v) = section.get("ignore_minimal").and_then(Config::to_bool) {
                 conf.switch_windows_ignore_minimal = v;
+            }
+            if let Some(v) = section
+                .get("thumbnail_preview")
+                .and_then(Config::to_bool)
+            {
+                conf.switch_windows_thumbnail_preview = v;
             }
             if let Some(v) = section
                 .get("only_current_desktop")

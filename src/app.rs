@@ -451,17 +451,10 @@ impl App {
             }
 
             let dpi_scale = get_dpi_scale(self.hwnd);
-            let original_hwnd = self
-                .switch_windows_state
-                .overlay
-                .as_ref()
-                .map(|session| session.original_hwnd)
-                .unwrap_or(hwnd);
-            let work_area = RectI::from(get_monitor_work_area(original_hwnd));
             if let Some(session) = self.switch_windows_state.overlay.as_mut() {
                 session.selected = advance_index(session.selected, session.items.len(), reverse);
                 session.layout = WindowGridLayout::new(
-                    work_area,
+                    session.work_area,
                     dpi_scale,
                     session.items.len(),
                     session.selected,
@@ -531,6 +524,7 @@ impl App {
             app_name,
             app_icon,
             original_hwnd: hwnd,
+            work_area,
             items,
             selected,
             hovered: None,
@@ -582,8 +576,7 @@ impl App {
             }
 
             let item = session.items.remove(index);
-            let work_area = RectI::from(get_monitor_work_area(session.original_hwnd));
-            reflow_overlay_session(session, work_area, dpi_scale, index);
+            reflow_overlay_session(session, dpi_scale, index);
             item.hwnd
         };
 
@@ -627,22 +620,13 @@ impl App {
     }
 
     fn prune_invalid_overlay(&mut self) -> bool {
-        let Some(original_hwnd) = self
-            .switch_windows_state
-            .overlay
-            .as_ref()
-            .map(|session| session.original_hwnd)
-        else {
-            return false;
-        };
-        let work_area = RectI::from(get_monitor_work_area(original_hwnd));
         let dpi_scale = get_dpi_scale(self.hwnd);
         let has_items = self
             .switch_windows_state
             .overlay
             .as_mut()
             .is_some_and(|session| {
-                prune_overlay_items(session, work_area, dpi_scale, |item_hwnd| unsafe {
+                prune_overlay_items(session, dpi_scale, |item_hwnd| unsafe {
                     IsWindow(Some(item_hwnd)).as_bool()
                 })
             });
@@ -790,17 +774,16 @@ fn normalize_overlay_title(title: &str) -> String {
     }
 }
 
-fn reflow_overlay_session(
-    session: &mut WindowOverlaySession,
-    work_area: RectI,
-    dpi_scale: f64,
-    selected: usize,
-) {
+fn reflow_overlay_session(session: &mut WindowOverlaySession, dpi_scale: f64, selected: usize) {
     session.selected = selected.min(session.items.len().saturating_sub(1));
     session.hovered = None;
     session.hovered_close = None;
-    session.layout =
-        WindowGridLayout::new(work_area, dpi_scale, session.items.len(), session.selected);
+    session.layout = WindowGridLayout::new(
+        session.work_area,
+        dpi_scale,
+        session.items.len(),
+        session.selected,
+    );
 }
 
 fn update_overlay_hover(session: &mut WindowOverlaySession, target: Option<GridHitTarget>) -> bool {
@@ -819,7 +802,6 @@ fn update_overlay_hover(session: &mut WindowOverlaySession, target: Option<GridH
 
 fn prune_overlay_items(
     session: &mut WindowOverlaySession,
-    work_area: RectI,
     dpi_scale: f64,
     mut is_valid: impl FnMut(HWND) -> bool,
 ) -> bool {
@@ -827,7 +809,7 @@ fn prune_overlay_items(
     session.items.retain(|item| is_valid(item.hwnd));
     if session.items.len() != old_len {
         let selected = session.selected;
-        reflow_overlay_session(session, work_area, dpi_scale, selected);
+        reflow_overlay_session(session, dpi_scale, selected);
     }
     !session.items.is_empty()
 }
@@ -845,6 +827,7 @@ mod tests {
             app_name: "Example".to_string(),
             app_icon: HICON::default(),
             original_hwnd: HWND(1 as _),
+            work_area: WORK_AREA,
             items: (0..count)
                 .map(|index| GridOverlayItem {
                     hwnd: HWND((index + 1) as _),
@@ -898,12 +881,9 @@ mod tests {
         session.hovered = Some(11);
         session.hovered_close = Some(11);
 
-        assert!(prune_overlay_items(
-            &mut session,
-            WORK_AREA,
-            1.0,
-            |hwnd| hwnd.0 as isize <= 6,
-        ));
+        assert!(prune_overlay_items(&mut session, 1.0, |hwnd| {
+            (hwnd.0 as isize) <= 6
+        }));
 
         assert_eq!(session.items.len(), 6);
         assert_eq!(session.selected, 5);
@@ -917,9 +897,22 @@ mod tests {
     fn pruning_every_item_reports_empty_session() {
         let mut session = overlay_session(2, 1);
 
-        assert!(!prune_overlay_items(&mut session, WORK_AREA, 1.0, |_| {
-            false
-        },));
+        assert!(!prune_overlay_items(&mut session, 1.0, |_| false));
         assert!(session.items.is_empty());
+    }
+
+    #[test]
+    fn cached_work_area_reflows_after_original_window_becomes_invalid() {
+        let mut session = overlay_session(12, 11);
+        session.original_hwnd = HWND::default();
+
+        assert!(prune_overlay_items(&mut session, 1.0, |hwnd| {
+            hwnd.0 as isize > 1
+        }));
+
+        assert_eq!(session.items.len(), 11);
+        assert!(session.work_area.contains_rect(session.layout.bounds));
+        assert!(session.layout.bounds.width > 0);
+        assert!(session.layout.bounds.height > 0);
     }
 }

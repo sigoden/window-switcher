@@ -1,4 +1,7 @@
-use crate::{thumbnail::OwnedBitmap, window_grid::WindowGridLayout};
+use crate::{
+    thumbnail::OwnedBitmap,
+    window_grid::{RectI, WindowGridLayout},
+};
 use windows::Win32::{
     Foundation::HWND,
     UI::WindowsAndMessaging::{IsWindow, HICON},
@@ -16,6 +19,7 @@ pub(crate) struct WindowOverlaySession {
     pub app_icon: HICON,
     #[allow(dead_code)]
     pub original_hwnd: HWND,
+    pub work_area: RectI,
     pub items: Vec<WindowOverlayItem>,
     pub selected: usize,
     pub hovered: Option<usize>,

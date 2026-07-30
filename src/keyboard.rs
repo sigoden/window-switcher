@@ -1,7 +1,7 @@
 use crate::{
     app::{
         WM_USER_SWITCH_APPS, WM_USER_SWITCH_APPS_CANCEL, WM_USER_SWITCH_APPS_DONE,
-        WM_USER_SWITCH_WINDOWS, WM_USER_SWITCH_WINDOWS_DONE,
+        WM_USER_SWITCH_WINDOWS, WM_USER_SWITCH_WINDOWS_CANCEL, WM_USER_SWITCH_WINDOWS_DONE,
     },
     config::{Hotkey, SWITCH_APPS_HOTKEY_ID, SWITCH_WINDOWS_HOTKEY_ID},
     foreground::IS_FOREGROUND_IN_BLACKLIST,
@@ -27,7 +27,33 @@ static KEYBOARD_STATE: LazyLock<Mutex<Vec<HotKeyState>>> = LazyLock::new(|| Mute
 static mut WINDOW: HWND = HWND(0 as _);
 static mut IS_SHIFT_PRESSED: bool = false;
 static mut IS_SWITCHING_APPS: bool = false;
+static mut IS_SWITCHING_WINDOWS: bool = false;
 static mut PREVIOUS_KEYCODE: u32 = 0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SwitchKeyAction {
+    Advance { id: u32, reverse: bool },
+    Cancel { id: u32 },
+}
+
+fn switch_key_action(
+    id: u32,
+    configured_code: u32,
+    scan_code: u32,
+    shift_pressed: bool,
+    switching: bool,
+) -> Option<SwitchKeyAction> {
+    if scan_code == 0x01 && switching {
+        Some(SwitchKeyAction::Cancel { id })
+    } else if scan_code == configured_code {
+        Some(SwitchKeyAction::Advance {
+            id,
+            reverse: shift_pressed,
+        })
+    } else {
+        None
+    }
+}
 
 #[derive(Debug)]
 pub struct KeyboardListener {
@@ -103,7 +129,7 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
     }
     let mut keyboard_state = KEYBOARD_STATE.lock();
     let mut send_done_hotkeys: IndexSet<u32> = IndexSet::new();
-    let mut send_action_message: Option<(u32, isize, bool)> = None;
+    let mut send_action_message: Option<SwitchKeyAction> = None;
 
     for state in keyboard_state.iter_mut() {
         if state.hotkey.modifier.contains(&scan_code) {
@@ -122,31 +148,43 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
         for state in keyboard_state.iter_mut() {
             if is_key_pressed() && state.is_modifier_pressed {
                 let id = state.hotkey.id;
-                if scan_code == state.hotkey.code {
-                    let reverse = if IS_SHIFT_PRESSED { 1 } else { 0 };
-                    if id == SWITCH_APPS_HOTKEY_ID
-                        || (id == SWITCH_WINDOWS_HOTKEY_ID && !IS_FOREGROUND_IN_BLACKLIST)
-                    {
-                        send_action_message = Some((id, reverse, false));
-                        PREVIOUS_KEYCODE = scan_code;
-                        break;
-                    };
-                } else if id == SWITCH_APPS_HOTKEY_ID {
-                    if scan_code == 0x01 {
-                        // escape key
-                        send_action_message = Some((id, 0, true));
-                        PREVIOUS_KEYCODE = scan_code;
-                        break;
-                    } else if [0x48, 0x4b, 0x4d, 0x50].contains(&scan_code) && IS_SWITCHING_APPS {
-                        // arrow keys
-                        let reverse = if scan_code == 0x48 || scan_code == 0x4b {
-                            1
-                        } else {
-                            0
-                        };
-                        send_action_message = Some((id, reverse, false));
-                        break;
+                let switching = if id == SWITCH_APPS_HOTKEY_ID {
+                    IS_SWITCHING_APPS
+                } else {
+                    IS_SWITCHING_WINDOWS
+                };
+                if let Some(action) = switch_key_action(
+                    id,
+                    state.hotkey.code,
+                    scan_code,
+                    IS_SHIFT_PRESSED,
+                    switching,
+                ) {
+                    match action {
+                        SwitchKeyAction::Advance { .. }
+                            if id == SWITCH_APPS_HOTKEY_ID
+                                || (id == SWITCH_WINDOWS_HOTKEY_ID
+                                    && !IS_FOREGROUND_IN_BLACKLIST) =>
+                        {
+                            send_action_message = Some(action);
+                            PREVIOUS_KEYCODE = scan_code;
+                            break;
+                        }
+                        SwitchKeyAction::Cancel { .. } => {
+                            send_action_message = Some(action);
+                            PREVIOUS_KEYCODE = scan_code;
+                            break;
+                        }
+                        SwitchKeyAction::Advance { .. } => {}
                     }
+                } else if id == SWITCH_APPS_HOTKEY_ID
+                    && [0x48, 0x4b, 0x4d, 0x50].contains(&scan_code)
+                    && IS_SWITCHING_APPS
+                {
+                    // arrow keys
+                    let reverse = scan_code == 0x48 || scan_code == 0x4b;
+                    send_action_message = Some(SwitchKeyAction::Advance { id, reverse });
+                    break;
                 }
             }
         }
@@ -159,24 +197,80 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
             IS_SWITCHING_APPS = false;
         } else if id == SWITCH_WINDOWS_HOTKEY_ID {
             send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS_DONE, WPARAM(0), LPARAM(0));
+            IS_SWITCHING_WINDOWS = false;
         }
     }
 
-    if let Some((id, reverse, is_cancel)) = send_action_message {
-        if id == SWITCH_APPS_HOTKEY_ID {
-            if is_cancel {
+    if let Some(action) = send_action_message {
+        match action {
+            SwitchKeyAction::Advance { id, reverse } if id == SWITCH_APPS_HOTKEY_ID => {
+                send_message_timeout(
+                    WINDOW,
+                    WM_USER_SWITCH_APPS,
+                    WPARAM(0),
+                    LPARAM(reverse as isize),
+                );
+                IS_SWITCHING_APPS = true;
+                IS_SWITCHING_WINDOWS = false;
+                return LRESULT(1);
+            }
+            SwitchKeyAction::Cancel { id } if id == SWITCH_APPS_HOTKEY_ID => {
                 send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_CANCEL, WPARAM(0), LPARAM(0));
                 IS_SWITCHING_APPS = false;
-            } else {
-                send_message_timeout(WINDOW, WM_USER_SWITCH_APPS, WPARAM(0), LPARAM(reverse));
-                IS_SWITCHING_APPS = true;
+                return LRESULT(1);
             }
-            return LRESULT(1);
-        } else if id == SWITCH_WINDOWS_HOTKEY_ID {
-            send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS, WPARAM(0), LPARAM(reverse));
-            IS_SWITCHING_APPS = false;
-            return LRESULT(1);
+            SwitchKeyAction::Advance { id, reverse } if id == SWITCH_WINDOWS_HOTKEY_ID => {
+                send_message_timeout(
+                    WINDOW,
+                    WM_USER_SWITCH_WINDOWS,
+                    WPARAM(0),
+                    LPARAM(reverse as isize),
+                );
+                IS_SWITCHING_APPS = false;
+                IS_SWITCHING_WINDOWS = true;
+                return LRESULT(1);
+            }
+            SwitchKeyAction::Cancel { id } if id == SWITCH_WINDOWS_HOTKEY_ID => {
+                send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS_CANCEL, WPARAM(0), LPARAM(0));
+                IS_SWITCHING_WINDOWS = false;
+                return LRESULT(1);
+            }
+            _ => {}
         }
     }
     CallNextHookEx(None, code, w_param, l_param)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escape_cancels_same_app_switching() {
+        assert_eq!(
+            switch_key_action(SWITCH_WINDOWS_HOTKEY_ID, 0x29, 0x01, false, true),
+            Some(SwitchKeyAction::Cancel {
+                id: SWITCH_WINDOWS_HOTKEY_ID
+            })
+        );
+    }
+
+    #[test]
+    fn shift_reverses_same_app_switching() {
+        assert_eq!(
+            switch_key_action(SWITCH_WINDOWS_HOTKEY_ID, 0x29, 0x29, true, false),
+            Some(SwitchKeyAction::Advance {
+                id: SWITCH_WINDOWS_HOTKEY_ID,
+                reverse: true
+            })
+        );
+    }
+
+    #[test]
+    fn escape_is_ignored_before_switching_starts() {
+        assert_eq!(
+            switch_key_action(SWITCH_WINDOWS_HOTKEY_ID, 0x29, 0x01, false, false),
+            None
+        );
+    }
 }

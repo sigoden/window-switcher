@@ -43,6 +43,7 @@ pub const WM_USER_SWITCH_APPS_DONE: u32 = 6011;
 pub const WM_USER_SWITCH_APPS_CANCEL: u32 = 6012;
 pub const WM_USER_SWITCH_WINDOWS: u32 = 6020;
 pub const WM_USER_SWITCH_WINDOWS_DONE: u32 = 6021;
+pub const WM_USER_SWITCH_WINDOWS_CANCEL: u32 = 6022;
 pub const IDM_EXIT: u32 = 1;
 pub const IDM_STARTUP: u32 = 2;
 pub const IDM_CONFIGURE: u32 = 3;
@@ -267,6 +268,12 @@ impl App {
                 debug!("message WM_USER_SWITCH_WINDOWS_DONE");
                 let app = get_app(hwnd)?;
                 app.do_switch_windows();
+                app.switch_windows_state.modifier_released = true;
+            }
+            WM_USER_SWITCH_WINDOWS_CANCEL => {
+                debug!("message WM_USER_SWITCH_WINDOWS_CANCEL");
+                let app = get_app(hwnd)?;
+                app.cancel_switch_windows();
                 app.switch_windows_state.modifier_released = true;
             }
             WM_NCHITTEST => {
@@ -637,7 +644,6 @@ impl App {
         has_items
     }
 
-    #[allow(dead_code)]
     fn cancel_switch_windows(&mut self) {
         if let Some(session) = self.switch_windows_state.overlay.take() {
             self.painter.unpaint_window_grid();

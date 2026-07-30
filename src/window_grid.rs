@@ -237,9 +237,15 @@ pub fn fit_aspect(source_width: i32, source_height: i32, frame: RectI) -> RectI 
     let (width, height) = if i64::from(source_width) * i64::from(frame.height)
         <= i64::from(source_height) * i64::from(frame.width)
     {
-        (source_width * frame.height / source_height, frame.height)
+        (
+            (i64::from(source_width) * i64::from(frame.height) / i64::from(source_height)) as i32,
+            frame.height,
+        )
     } else {
-        (frame.width, source_height * frame.width / source_width)
+        (
+            frame.width,
+            (i64::from(source_height) * i64::from(frame.width) / i64::from(source_width)) as i32,
+        )
     };
 
     RectI::new(
@@ -344,6 +350,18 @@ mod tests {
         assert_eq!(fit_aspect(900, 1600, frame), RectI::new(104, 20, 112, 200));
         assert_eq!(fit_aspect(1000, 1000, frame), RectI::new(60, 20, 200, 200));
         assert_eq!(fit_aspect(0, 1000, frame), frame);
+    }
+
+    #[test]
+    fn aspect_fit_avoids_overflowing_large_dimensions() {
+        assert_eq!(
+            fit_aspect(i32::MAX, i32::MAX, RectI::new(10, 20, 2, 2)),
+            RectI::new(10, 20, 2, 2)
+        );
+        assert_eq!(
+            fit_aspect(i32::MAX, i32::MAX, RectI::new(10, 20, 2, 3)),
+            RectI::new(10, 20, 2, 2)
+        );
     }
 
     #[test]

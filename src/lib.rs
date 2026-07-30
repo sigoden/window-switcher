@@ -13,6 +13,7 @@ mod startup;
 mod thumbnail;
 mod trayicon;
 pub mod window_grid;
+mod window_overlay;
 
 pub use crate::app::start;
 pub use crate::config::{load_config, Config};

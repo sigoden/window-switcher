@@ -1,7 +1,9 @@
-use crate::app::{SwitchAppsState, WindowOverlayItem};
+use crate::app::{SwitchAppsState, WindowOverlayItem as LegacyWindowOverlayItem};
 use crate::config::{Config, TitlePosition};
 use crate::thumbnail::capture_window_thumbnail;
 use crate::utils::{check_error, get_dpi_scale, get_moinitor_rect, is_light_theme, is_win11};
+use crate::window_grid::RectI;
+use crate::window_overlay::WindowOverlaySession;
 
 use anyhow::{Context, Result};
 use windows::core::PCWSTR;
@@ -10,29 +12,32 @@ use windows::Win32::{
     Graphics::{
         Gdi::{
             CreateCompatibleBitmap, CreateCompatibleDC, CreateRoundRectRgn, CreateSolidBrush,
-            DeleteDC, DeleteObject, FillRect, FillRgn, GetDC, ReleaseDC, SelectObject,
-            SetStretchBltMode, StretchBlt, AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION, HALFTONE,
-            HBITMAP, HDC, HPALETTE, SRCCOPY,
+            DeleteDC, DeleteObject, FillRect, FillRgn, GetDC, GetSysColor, ReleaseDC, SelectObject,
+            SetStretchBltMode, StretchBlt, AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION,
+            COLOR_HIGHLIGHT, HALFTONE, HBITMAP, HDC, HGDIOBJ, HPALETTE, SRCCOPY,
         },
         GdiPlus::{
             FillModeAlternate, GdipAddPathArc, GdipClosePathFigure, GdipCreateBitmapFromHBITMAP,
             GdipCreateFont, GdipCreateFontFamilyFromName, GdipCreateFromHDC, GdipCreatePath,
-            GdipCreatePen1, GdipCreateStringFormat, GdipDeleteBrush, GdipDeleteFont,
-            GdipDeleteFontFamily, GdipDeleteGraphics, GdipDeletePath, GdipDeletePen,
-            GdipDeleteStringFormat, GdipDisposeImage, GdipDrawImageRect, GdipDrawLine, GdipDrawString,
-            GdipFillPath, GdipFillRectangle, GdipGetPenBrushFill, GdipSetInterpolationMode,
-            GdipSetSmoothingMode, GdipSetStringFormatAlign, GdipSetStringFormatLineAlign,
+            GdipCreatePen1, GdipCreateSolidFill, GdipCreateStringFormat, GdipDeleteBrush,
+            GdipDeleteFont, GdipDeleteFontFamily, GdipDeleteGraphics, GdipDeletePath,
+            GdipDeletePen, GdipDeleteStringFormat, GdipDisposeImage, GdipDrawImageRect,
+            GdipDrawLine, GdipDrawString, GdipFillPath, GdipFillRectangle, GdipGetPenBrushFill,
+            GdipGraphicsClear, GdipSetInterpolationMode, GdipSetSmoothingMode,
+            GdipSetStringFormatAlign, GdipSetStringFormatFlags, GdipSetStringFormatLineAlign,
             GdipSetStringFormatTrimming, GdiplusShutdown, GdiplusStartup, GdiplusStartupInput,
             GpBitmap, GpBrush, GpFont, GpFontFamily, GpGraphics, GpImage, GpPath, GpPen,
-            GpStringFormat, InterpolationModeHighQualityBicubic, RectF, SmoothingModeAntiAlias,
-            StringAlignmentCenter, StringTrimmingEllipsisCharacter, Unit,
+            GpSolidFill, GpStringFormat, InterpolationModeHighQualityBicubic, Ok as GdiPlusOk,
+            RectF, SmoothingModeAntiAlias, StringAlignment, StringAlignmentCenter,
+            StringAlignmentFar, StringAlignmentNear, StringFormatFlagsNoWrap, StringTrimming,
+            StringTrimmingEllipsisCharacter, Unit,
         },
     },
     UI::{
         Input::KeyboardAndMouse::SetFocus,
         WindowsAndMessaging::{
-            DrawIconEx, GetCursorPos, ShowWindow, UpdateLayeredWindow, DI_NORMAL, SW_HIDE, SW_SHOW,
-            ULW_ALPHA,
+            DrawIconEx, GetCursorPos, ShowWindow, UpdateLayeredWindow, DI_NORMAL, HICON, SW_HIDE,
+            SW_SHOW, SW_SHOWNA, ULW_ALPHA,
         },
     },
 };
@@ -268,9 +273,78 @@ impl GdiAAPainter {
         None
     }
 
+    #[allow(dead_code)]
+    pub fn paint_window_grid(&mut self, session: &WindowOverlaySession, quick_actions: bool) {
+        let bounds = session.layout.bounds;
+        if bounds.width <= 0 || bounds.height <= 0 {
+            return;
+        }
+
+        let Some(backing) =
+            (unsafe { GridBackingSurface::new(self.hdc_screen, bounds.width, bounds.height) })
+        else {
+            return;
+        };
+
+        {
+            let Some(graphics) = (unsafe { GridGraphics::new(backing.hdc) }) else {
+                return;
+            };
+            unsafe {
+                GdipSetSmoothingMode(graphics.get(), SmoothingModeAntiAlias);
+                GdipSetInterpolationMode(graphics.get(), InterpolationModeHighQualityBicubic);
+                GdipGraphicsClear(graphics.get(), 0);
+                render_window_grid(graphics.get(), backing.hdc, session, quick_actions);
+            }
+        }
+
+        let blend = BLENDFUNCTION {
+            BlendOp: AC_SRC_OVER as _,
+            SourceConstantAlpha: 255,
+            AlphaFormat: AC_SRC_ALPHA as _,
+            ..Default::default()
+        };
+        let updated = unsafe {
+            UpdateLayeredWindow(
+                self.hwnd,
+                Some(self.hdc_screen),
+                Some(&POINT {
+                    x: bounds.x,
+                    y: bounds.y,
+                }),
+                Some(&SIZE {
+                    cx: bounds.width,
+                    cy: bounds.height,
+                }),
+                Some(backing.hdc),
+                Some(&POINT::default()),
+                COLORREF(0),
+                Some(&blend),
+                ULW_ALPHA,
+            )
+            .is_ok()
+        };
+        if !updated || self.show {
+            return;
+        }
+
+        unsafe {
+            let _ = ShowWindow(self.hwnd, SW_SHOWNA);
+        }
+        self.show = true;
+    }
+
+    #[allow(dead_code)]
+    pub fn unpaint_window_grid(&mut self) {
+        unsafe {
+            let _ = ShowWindow(self.hwnd, SW_HIDE);
+        }
+        self.show = false;
+    }
+
     pub fn paint_switch_windows(
         &mut self,
-        windows: &[WindowOverlayItem],
+        windows: &[LegacyWindowOverlayItem],
         index: usize,
         config: &Config,
         hovered_close_index: Option<usize>,
@@ -681,6 +755,507 @@ const fn theme_color(light_theme: bool) -> (u32, u32) {
     }
 }
 
+struct GridBackingSurface {
+    hdc: HDC,
+    bitmap: HBITMAP,
+    previous: HGDIOBJ,
+}
+
+impl GridBackingSurface {
+    unsafe fn new(hdc_screen: HDC, width: i32, height: i32) -> Option<Self> {
+        let hdc = unsafe { CreateCompatibleDC(Some(hdc_screen)) };
+        if hdc.is_invalid() {
+            return None;
+        }
+
+        let bitmap = unsafe { CreateCompatibleBitmap(hdc_screen, width, height) };
+        if bitmap.is_invalid() {
+            unsafe {
+                let _ = DeleteDC(hdc);
+            }
+            return None;
+        }
+
+        let previous = unsafe { SelectObject(hdc, bitmap.into()) };
+        if previous.is_invalid() {
+            unsafe {
+                let _ = DeleteObject(bitmap.into());
+                let _ = DeleteDC(hdc);
+            }
+            return None;
+        }
+
+        Some(Self {
+            hdc,
+            bitmap,
+            previous,
+        })
+    }
+}
+
+impl Drop for GridBackingSurface {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = SelectObject(self.hdc, self.previous);
+            let _ = DeleteObject(self.bitmap.into());
+            let _ = DeleteDC(self.hdc);
+        }
+    }
+}
+
+struct GridGraphics(*mut GpGraphics);
+
+impl GridGraphics {
+    unsafe fn new(hdc: HDC) -> Option<Self> {
+        let mut graphics = std::ptr::null_mut();
+        let status = unsafe { GdipCreateFromHDC(hdc, &mut graphics) };
+        if status != GdiPlusOk || graphics.is_null() {
+            if !graphics.is_null() {
+                unsafe {
+                    GdipDeleteGraphics(graphics);
+                }
+            }
+            return None;
+        }
+        Some(Self(graphics))
+    }
+
+    fn get(&self) -> *mut GpGraphics {
+        self.0
+    }
+}
+
+impl Drop for GridGraphics {
+    fn drop(&mut self) {
+        unsafe {
+            GdipDeleteGraphics(self.0);
+        }
+    }
+}
+
+struct GridColors {
+    surface: u32,
+    card: u32,
+    hovered_card: u32,
+    text: u32,
+    secondary_text: u32,
+    preview: u32,
+}
+
+impl GridColors {
+    fn current() -> Self {
+        let light_theme = is_light_theme();
+        let (card, surface) = theme_color(light_theme);
+        if light_theme {
+            Self {
+                surface: 0xf8000000 | surface,
+                card: ALPHA_MASK | card,
+                hovered_card: 0xffffffff,
+                text: 0xff1b1b1b,
+                secondary_text: 0xff5f5f5f,
+                preview: 0xff161616,
+            }
+        } else {
+            Self {
+                surface: 0xf8000000 | surface,
+                card: ALPHA_MASK | card,
+                hovered_card: 0xff555555,
+                text: 0xffffffff,
+                secondary_text: 0xffd0d0d0,
+                preview: 0xff101010,
+            }
+        }
+    }
+}
+
+unsafe fn render_window_grid(
+    graphics: *mut GpGraphics,
+    hdc: HDC,
+    session: &WindowOverlaySession,
+    quick_actions: bool,
+) {
+    let bounds = session.layout.bounds;
+    let surface = relative_to_bounds(session.layout.surface, bounds);
+    let header = relative_to_bounds(session.layout.header, bounds);
+    let colors = GridColors::current();
+    let corner_radius = surface.x.min(surface.y).max(6) as f32;
+    let shadow_margin = surface.x.min(surface.y).max(0);
+
+    for (numerator, alpha) in [(4, 0x08), (3, 0x0c), (2, 0x10), (1, 0x16)] {
+        let spread = shadow_margin * numerator / 4;
+        let shadow = expand_rect(surface, spread);
+        unsafe {
+            fill_round_rect(graphics, shadow, corner_radius + spread as f32, alpha << 24);
+        }
+    }
+    unsafe {
+        fill_round_rect(graphics, surface, corner_radius, colors.surface);
+    }
+
+    let icon_size = (header.height - 8).clamp(1, 32);
+    let icon_rect = RectI::new(
+        header.x,
+        header.y + (header.height - icon_size) / 2,
+        icon_size,
+        icon_size,
+    );
+    unsafe {
+        draw_app_icon_fallback(hdc, session.app_icon, icon_rect);
+    }
+
+    let page_text = format!("{} of {}", session.selected + 1, session.items.len());
+    let page_width = (header.width / 4).max(80).min(header.width);
+    let page_rect = RectI::new(
+        header.x + header.width - page_width,
+        header.y,
+        page_width,
+        header.height,
+    );
+    let app_name_x = icon_rect.x + icon_rect.width + 10;
+    let app_name_rect = RectI::new(
+        app_name_x,
+        header.y,
+        (page_rect.x - app_name_x - 8).max(0),
+        header.height,
+    );
+    let header_font_size = (header.height as f32 * 0.4).max(9.0);
+    unsafe {
+        draw_text(
+            graphics,
+            &session.app_name,
+            app_name_rect,
+            header_font_size,
+            colors.text,
+            StringTrimmingEllipsisCharacter,
+        );
+        draw_text_aligned(
+            graphics,
+            &page_text,
+            page_rect,
+            header_font_size * 0.85,
+            colors.secondary_text,
+            StringTrimmingEllipsisCharacter,
+            StringAlignmentFar,
+        );
+    }
+
+    let selected_color = unsafe { system_highlight_color() };
+    for card in &session.layout.cards {
+        let Some(item) = session.items.get(card.global_index) else {
+            continue;
+        };
+
+        let card_rect = relative_to_bounds(card.card, bounds);
+        let preview_rect = relative_to_bounds(card.preview, bounds);
+        let title_rect = relative_to_bounds(card.title, bounds);
+        let close_rect = relative_to_bounds(card.close, bounds);
+        let selected = session.selected == card.global_index;
+        let hovered = session.hovered == Some(card.global_index);
+        let card_color = if hovered {
+            colors.hovered_card
+        } else {
+            colors.card
+        };
+        let card_radius = (card_rect.height / 20).clamp(4, 10) as f32;
+
+        unsafe {
+            if selected {
+                fill_round_rect(graphics, card_rect, card_radius, selected_color);
+                let inner = inset_rect(card_rect, 2);
+                fill_round_rect(graphics, inner, (card_radius - 2.0).max(1.0), card_color);
+            } else {
+                fill_round_rect(graphics, card_rect, card_radius, card_color);
+            }
+            fill_round_rect(graphics, preview_rect, card_radius / 2.0, colors.preview);
+        }
+
+        if let Some(thumbnail) = &item.thumbnail {
+            unsafe {
+                draw_bitmap(graphics, thumbnail.handle(), preview_rect);
+            }
+        } else {
+            let fallback_size = preview_rect.width.min(preview_rect.height).clamp(1, 64);
+            let fallback_rect = RectI::new(
+                preview_rect.x + (preview_rect.width - fallback_size) / 2,
+                preview_rect.y + (preview_rect.height - fallback_size) / 2,
+                fallback_size,
+                fallback_size,
+            );
+            unsafe {
+                draw_app_icon_fallback(hdc, session.app_icon, fallback_rect);
+            }
+        }
+
+        let title = if item.title.trim().is_empty() {
+            "Untitled"
+        } else {
+            &item.title
+        };
+        unsafe {
+            draw_text(
+                graphics,
+                title,
+                title_rect,
+                (title_rect.height as f32 * 0.42).max(8.0),
+                colors.text,
+                StringTrimmingEllipsisCharacter,
+            );
+        }
+
+        if quick_actions && (selected || hovered) {
+            unsafe {
+                draw_close_control(
+                    graphics,
+                    close_rect,
+                    session.hovered_close == Some(card.global_index),
+                );
+            }
+        }
+    }
+}
+
+fn relative_to_bounds(rect: RectI, bounds: RectI) -> RectI {
+    RectI::new(
+        rect.x - bounds.x,
+        rect.y - bounds.y,
+        rect.width,
+        rect.height,
+    )
+}
+
+fn expand_rect(rect: RectI, amount: i32) -> RectI {
+    RectI::new(
+        rect.x - amount,
+        rect.y - amount,
+        rect.width + amount * 2,
+        rect.height + amount * 2,
+    )
+}
+
+fn inset_rect(rect: RectI, amount: i32) -> RectI {
+    RectI::new(
+        rect.x + amount,
+        rect.y + amount,
+        (rect.width - amount * 2).max(0),
+        (rect.height - amount * 2).max(0),
+    )
+}
+
+unsafe fn system_highlight_color() -> u32 {
+    let color = unsafe { GetSysColor(COLOR_HIGHLIGHT) };
+    if color == 0 {
+        return 0xff0078d4;
+    }
+
+    ALPHA_MASK | ((color & 0xff) << 16) | (color & 0xff00) | ((color >> 16) & 0xff)
+}
+
+unsafe fn fill_round_rect(graphics: *mut GpGraphics, rect: RectI, radius: f32, color: u32) {
+    if rect.width <= 0 || rect.height <= 0 {
+        return;
+    }
+
+    let mut solid_fill: *mut GpSolidFill = std::ptr::null_mut();
+    let status = unsafe { GdipCreateSolidFill(color, &mut solid_fill) };
+    if status == GdiPlusOk && !solid_fill.is_null() {
+        unsafe {
+            draw_round_rect(
+                graphics,
+                solid_fill.cast(),
+                rect.x as f32,
+                rect.y as f32,
+                (rect.x + rect.width) as f32,
+                (rect.y + rect.height) as f32,
+                radius,
+            );
+        }
+    }
+    if !solid_fill.is_null() {
+        unsafe {
+            GdipDeleteBrush(solid_fill.cast());
+        }
+    }
+}
+
+unsafe fn draw_text(
+    graphics: *mut GpGraphics,
+    text: &str,
+    rect: RectI,
+    font_size: f32,
+    color: u32,
+    trimming: StringTrimming,
+) {
+    unsafe {
+        draw_text_aligned(
+            graphics,
+            text,
+            rect,
+            font_size,
+            color,
+            trimming,
+            StringAlignmentNear,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+unsafe fn draw_text_aligned(
+    graphics: *mut GpGraphics,
+    text: &str,
+    rect: RectI,
+    font_size: f32,
+    color: u32,
+    trimming: StringTrimming,
+    alignment: StringAlignment,
+) {
+    if rect.width <= 0 || rect.height <= 0 || font_size <= 0.0 {
+        return;
+    }
+
+    let mut family: *mut GpFontFamily = std::ptr::null_mut();
+    let mut font: *mut GpFont = std::ptr::null_mut();
+    let mut format: *mut GpStringFormat = std::ptr::null_mut();
+    let mut solid_fill: *mut GpSolidFill = std::ptr::null_mut();
+
+    let family_status = unsafe {
+        GdipCreateFontFamilyFromName(
+            windows::core::w!("Segoe UI"),
+            std::ptr::null_mut(),
+            &mut family,
+        )
+    };
+    if family_status == GdiPlusOk && !family.is_null() {
+        let font_status = unsafe { GdipCreateFont(family, font_size, 0, Unit(2), &mut font) };
+        if font_status == GdiPlusOk && !font.is_null() {
+            let format_status = unsafe { GdipCreateStringFormat(0, 0, &mut format) };
+            if format_status == GdiPlusOk && !format.is_null() {
+                unsafe {
+                    GdipSetStringFormatAlign(format, alignment);
+                    GdipSetStringFormatLineAlign(format, StringAlignmentCenter);
+                    GdipSetStringFormatTrimming(format, trimming);
+                    GdipSetStringFormatFlags(format, StringFormatFlagsNoWrap.0);
+                }
+
+                let brush_status = unsafe { GdipCreateSolidFill(color, &mut solid_fill) };
+                if brush_status == GdiPlusOk && !solid_fill.is_null() {
+                    let text_u16: Vec<u16> = text.encode_utf16().collect();
+                    let layout = RectF {
+                        X: rect.x as f32,
+                        Y: rect.y as f32,
+                        Width: rect.width as f32,
+                        Height: rect.height as f32,
+                    };
+                    unsafe {
+                        GdipDrawString(
+                            graphics,
+                            PCWSTR(text_u16.as_ptr()),
+                            text_u16.len() as i32,
+                            font,
+                            &layout,
+                            format,
+                            solid_fill.cast(),
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    if !solid_fill.is_null() {
+        unsafe {
+            GdipDeleteBrush(solid_fill.cast());
+        }
+    }
+    if !format.is_null() {
+        unsafe {
+            GdipDeleteStringFormat(format);
+        }
+    }
+    if !font.is_null() {
+        unsafe {
+            GdipDeleteFont(font);
+        }
+    }
+    if !family.is_null() {
+        unsafe {
+            GdipDeleteFontFamily(family);
+        }
+    }
+}
+
+unsafe fn draw_bitmap(graphics: *mut GpGraphics, bitmap: HBITMAP, rect: RectI) {
+    if bitmap.is_invalid() || rect.width <= 0 || rect.height <= 0 {
+        return;
+    }
+
+    let mut gdip_bitmap: *mut GpBitmap = std::ptr::null_mut();
+    let status =
+        unsafe { GdipCreateBitmapFromHBITMAP(bitmap, HPALETTE::default(), &mut gdip_bitmap) };
+    if status == GdiPlusOk && !gdip_bitmap.is_null() {
+        unsafe {
+            GdipDrawImageRect(
+                graphics,
+                gdip_bitmap.cast(),
+                rect.x as f32,
+                rect.y as f32,
+                rect.width as f32,
+                rect.height as f32,
+            );
+        }
+    }
+    if !gdip_bitmap.is_null() {
+        unsafe {
+            GdipDisposeImage(gdip_bitmap.cast());
+        }
+    }
+}
+
+unsafe fn draw_app_icon_fallback(hdc: HDC, icon: HICON, rect: RectI) {
+    if hdc.is_invalid() || icon.is_invalid() || rect.width <= 0 || rect.height <= 0 {
+        return;
+    }
+
+    unsafe {
+        let _ = DrawIconEx(
+            hdc,
+            rect.x,
+            rect.y,
+            icon,
+            rect.width,
+            rect.height,
+            0,
+            None,
+            DI_NORMAL,
+        );
+    }
+}
+
+unsafe fn draw_close_control(graphics: *mut GpGraphics, rect: RectI, hovered: bool) {
+    let fill = if hovered { 0xffc42b1c } else { 0xb8000000 };
+    unsafe {
+        fill_round_rect(graphics, rect, rect.width.min(rect.height) as f32, fill);
+    }
+
+    let mut pen: *mut GpPen = std::ptr::null_mut();
+    let status = unsafe { GdipCreatePen1(0xffffffff, 1.5, Unit(2), &mut pen) };
+    if status == GdiPlusOk && !pen.is_null() {
+        let padding = (rect.width.min(rect.height) as f32 * 0.3).max(2.0);
+        let left = rect.x as f32 + padding;
+        let top = rect.y as f32 + padding;
+        let right = (rect.x + rect.width) as f32 - padding;
+        let bottom = (rect.y + rect.height) as f32 - padding;
+        unsafe {
+            GdipDrawLine(graphics, pen, left, top, right, bottom);
+            GdipDrawLine(graphics, pen, right, top, left, bottom);
+        }
+    }
+    if !pen.is_null() {
+        unsafe {
+            GdipDeletePen(pen);
+        }
+    }
+}
+
 unsafe fn draw_round_rect(
     graphic_ptr: *mut GpGraphics,
     brush_ptr: *mut GpBrush,
@@ -691,60 +1266,54 @@ unsafe fn draw_round_rect(
     corner_radius: f32,
 ) {
     unsafe {
+        let width = right - left;
+        let height = bottom - top;
+        if width <= 0.0 || height <= 0.0 {
+            return;
+        }
         if corner_radius <= 0.0 {
-            GdipFillRectangle(
-                graphic_ptr,
-                brush_ptr,
-                left,
-                top,
-                right - left,
-                bottom - top,
-            );
+            GdipFillRectangle(graphic_ptr, brush_ptr, left, top, width, height);
             return;
         }
 
-        let mut path = GpPath::default();
-        let mut path_ptr: *mut GpPath = &mut path;
-        GdipCreatePath(FillModeAlternate, &mut path_ptr as _);
-        GdipAddPathArc(
-            path_ptr,
-            left,
-            top,
-            corner_radius,
-            corner_radius,
-            180.0,
-            90.0,
-        );
-        GdipAddPathArc(
-            path_ptr,
-            right - corner_radius,
-            top,
-            corner_radius,
-            corner_radius,
-            270.0,
-            90.0,
-        );
-        GdipAddPathArc(
-            path_ptr,
-            right - corner_radius,
-            bottom - corner_radius,
-            corner_radius,
-            corner_radius,
-            0.0,
-            90.0,
-        );
-        GdipAddPathArc(
-            path_ptr,
-            left,
-            bottom - corner_radius,
-            corner_radius,
-            corner_radius,
-            90.0,
-            90.0,
-        );
-        GdipClosePathFigure(path_ptr);
-        GdipFillPath(graphic_ptr, brush_ptr, path_ptr);
-        GdipDeletePath(path_ptr);
+        let diameter = corner_radius.min(width).min(height);
+        let mut path_ptr: *mut GpPath = std::ptr::null_mut();
+        let status = GdipCreatePath(FillModeAlternate, &mut path_ptr);
+        if status == GdiPlusOk && !path_ptr.is_null() {
+            GdipAddPathArc(path_ptr, left, top, diameter, diameter, 180.0, 90.0);
+            GdipAddPathArc(
+                path_ptr,
+                right - diameter,
+                top,
+                diameter,
+                diameter,
+                270.0,
+                90.0,
+            );
+            GdipAddPathArc(
+                path_ptr,
+                right - diameter,
+                bottom - diameter,
+                diameter,
+                diameter,
+                0.0,
+                90.0,
+            );
+            GdipAddPathArc(
+                path_ptr,
+                left,
+                bottom - diameter,
+                diameter,
+                diameter,
+                90.0,
+                90.0,
+            );
+            GdipClosePathFigure(path_ptr);
+            GdipFillPath(graphic_ptr, brush_ptr, path_ptr);
+        }
+        if !path_ptr.is_null() {
+            GdipDeletePath(path_ptr);
+        }
     }
 }
 

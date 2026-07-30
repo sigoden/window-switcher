@@ -349,6 +349,18 @@ mod tests {
     }
 
     #[test]
+    fn selected_item_is_always_on_visible_page() {
+        for selected in 0..24 {
+            let layout = WindowGridLayout::new(WORK_AREA, 1.0, 24, selected);
+            assert!(layout
+                .cards
+                .iter()
+                .any(|card| card.global_index == selected));
+            assert!(layout.cards.len() <= 10);
+        }
+    }
+
+    #[test]
     fn stays_inside_work_area_at_supported_scales() {
         for dpi in [1.0, 1.25, 1.5, 2.0] {
             let layout = WindowGridLayout::new(WORK_AREA, dpi, 10, 1);

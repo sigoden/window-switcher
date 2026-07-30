@@ -1,6 +1,6 @@
 # Window Switcher
 
-Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
+Window-Switcher offers customizable hotkeys for quickly switching windows on Windows OS:
 
 1. ```Alt+`(Backtick)```: switch between windows of the same app.
 
@@ -21,6 +21,12 @@ Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 For the tech-savvy, here's a one-liner to automate the installation:
 ```ps1
 iwr -useb https://raw.githubusercontent.com/sigoden/window-switcher/main/install.ps1 | iex
+```
+
+You can also install Window-Switcher via [Scoop](https://github.com/ScoopInstaller/Scoop) with these commands:
+```ps1
+scoop bucket add extras
+scoop install extras/window-switcher
 ```
 
 ## Configuration
@@ -67,13 +73,13 @@ only_current_desktop = auto
 
 ## Running as Administrator (Optional)
 
-The window-switcher works in standard user mode. But only the window-switcher running in administrator mode can manage applications running in administrator mode.
+Window-Switcher works in standard user mode by default. Launch Window-Switcher in administrator mode to also manage applications running in administrator mode.
 
-**Important:** If you enable the startup option while running in standard user mode, it will launch in standard mode upon system reboot. To ensure startup with admin privileges, launch the window-switcher as administrator first before enabling startup.
+**Important:** If you enable the startup option while running in standard user mode, Window-Switcher will launch in standard mode upon system reboot. To ensure startup with admin privileges, launch Window-Switcher as administrator first before enabling startup.
 
 ## License
 
-Copyright (c) 2023-2025 window-switcher developers.
+Copyright (c) 2023-2026 window-switcher developers.
 
 window-switcher is made available under the terms of the MIT License, at your option.
 

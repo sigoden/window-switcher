@@ -1,12 +1,16 @@
 use crate::window_grid::{fit_aspect, RectI};
+use std::{ffi::c_void, mem::size_of};
 use windows::Win32::{
-    Foundation::{COLORREF, HWND},
-    Graphics::Gdi::{
-        CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetPixel,
-        PatBlt, ReleaseDC, SelectObject, SetStretchBltMode, StretchBlt, BLACKNESS, HALFTONE,
-        HBITMAP, HDC, HGDIOBJ, SRCCOPY,
+    Foundation::{COLORREF, HWND, RECT},
+    Graphics::{
+        Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS},
+        Gdi::{
+            CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetPixel,
+            PatBlt, ReleaseDC, SelectObject, SetStretchBltMode, StretchBlt, BLACKNESS, HALFTONE,
+            HBITMAP, HDC, HGDIOBJ, SRCCOPY,
+        },
     },
-    UI::WindowsAndMessaging::{GetWindowPlacement, WINDOWPLACEMENT},
+    UI::WindowsAndMessaging::{GetWindowPlacement, GetWindowRect, IsIconic, WINDOWPLACEMENT},
 };
 
 const PW_RENDERFULLCONTENT: u32 = 0x00000002;
@@ -103,7 +107,8 @@ pub fn capture_window_thumbnail_cached(
         }
         let _source_dc = SelectedBitmapDc::new(hdc_source, bitmap_source.handle())?;
 
-        if PrintWindow(hwnd, hdc_source, PW_RENDERFULLCONTENT) == 0
+        if !PatBlt(hdc_source, 0, 0, src_w, src_h, BLACKNESS).as_bool()
+            || PrintWindow(hwnd, hdc_source, PW_RENDERFULLCONTENT) == 0
             || capture_is_blank(hdc_source, src_w, src_h)
         {
             return None;
@@ -179,13 +184,57 @@ fn window_placement() -> WINDOWPLACEMENT {
     }
 }
 
+fn source_rect_for_capture(
+    minimized: bool,
+    normal_position: Option<RectI>,
+    extended_frame: Option<RectI>,
+    window_rect: Option<RectI>,
+) -> Option<RectI> {
+    let usable = |rect: RectI| (rect.width > 0 && rect.height > 0).then_some(rect);
+    if minimized {
+        normal_position.and_then(usable)
+    } else {
+        extended_frame
+            .and_then(usable)
+            .or_else(|| window_rect.and_then(usable))
+    }
+}
+
 unsafe fn get_window_content_size(hwnd: HWND) -> Option<(i32, i32)> {
-    let mut placement = window_placement();
-    GetWindowPlacement(hwnd, &mut placement).ok()?;
-    let rect = placement.rcNormalPosition;
-    let w = rect.right - rect.left;
-    let h = rect.bottom - rect.top;
-    Some((w, h))
+    let minimized = unsafe { IsIconic(hwnd).as_bool() };
+    let normal_position = if minimized {
+        let mut placement = window_placement();
+        unsafe { GetWindowPlacement(hwnd, &mut placement) }
+            .ok()
+            .map(|_| RectI::from(placement.rcNormalPosition))
+    } else {
+        None
+    };
+    let extended_frame = if minimized {
+        None
+    } else {
+        let mut rect = RECT::default();
+        unsafe {
+            DwmGetWindowAttribute(
+                hwnd,
+                DWMWA_EXTENDED_FRAME_BOUNDS,
+                &mut rect as *mut RECT as *mut c_void,
+                size_of::<RECT>() as u32,
+            )
+        }
+        .ok()
+        .map(|_| RectI::from(rect))
+    };
+    let window_rect = if minimized {
+        None
+    } else {
+        let mut rect = RECT::default();
+        unsafe { GetWindowRect(hwnd, &mut rect) }
+            .ok()
+            .map(|_| RectI::from(rect))
+    };
+    let rect = source_rect_for_capture(minimized, normal_position, extended_frame, window_rect)?;
+    Some((rect.width, rect.height))
 }
 
 #[cfg(test)]
@@ -213,6 +262,41 @@ mod tests {
         assert_eq!(
             window_placement().length as usize,
             std::mem::size_of::<WINDOWPLACEMENT>()
+        );
+    }
+
+    #[test]
+    fn visible_window_uses_current_extended_frame_bounds() {
+        let normal = RectI::new(10, 20, 800, 600);
+        let extended_frame = RectI::new(100, 200, 1920, 1080);
+        let window_rect = RectI::new(90, 190, 1940, 1100);
+
+        assert_eq!(
+            source_rect_for_capture(false, Some(normal), Some(extended_frame), Some(window_rect)),
+            Some(extended_frame)
+        );
+    }
+
+    #[test]
+    fn visible_window_falls_back_to_current_window_rect() {
+        let normal = RectI::new(10, 20, 800, 600);
+        let window_rect = RectI::new(90, 190, 1940, 1100);
+
+        assert_eq!(
+            source_rect_for_capture(false, Some(normal), None, Some(window_rect)),
+            Some(window_rect)
+        );
+    }
+
+    #[test]
+    fn minimized_window_deliberately_uses_normal_position() {
+        let normal = RectI::new(10, 20, 800, 600);
+        let extended_frame = RectI::new(100, 200, 1920, 1080);
+        let window_rect = RectI::new(90, 190, 1940, 1100);
+
+        assert_eq!(
+            source_rect_for_capture(true, Some(normal), Some(extended_frame), Some(window_rect)),
+            Some(normal)
         );
     }
 }

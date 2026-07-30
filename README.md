@@ -2,7 +2,14 @@
 
 Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 
-1. ```Alt+`(Backtick)```: switch between windows of the same app.
+1. `Alt+Backtick`: switch between windows belonging to the foreground app.
+
+   Hold Alt and press Backtick repeatedly to move through a responsive preview
+   grid. Release Alt to activate the selected window, use Shift to move
+   backward, or press Escape to cancel.
+
+   The grid shows cached, aspect-correct previews and readable window titles.
+   With more than ten windows, selection moves between ten-window pages.
 
 ![switch-windows](https://github.com/sigoden/window-switcher/assets/4012553/06d387ce-31fd-450b-adf3-01bfcfc4bce3)
 
@@ -32,37 +39,29 @@ To personalize Window-Switcher, you'll need a configuration file named `window-s
 Here is the default configuration:
 
 ```ini
-# Whether to show trayicon, yes/no
-trayicon = yes 
+# Whether to show the notification-area icon.
+trayicon = yes
 
 [switch-windows]
-
-# Hotkey to switch windows
+# Switch between windows belonging to the foreground app.
 hotkey = alt+`
-
-# List of hotkey conflict apps
-# e.g. game1.exe,game2.exe
 blacklist =
-
-# Ignore minimal windows
 ignore_minimal = no
-
-# Only switch within the current virtual desktops: yes/no/auto
+thumbnail_preview = yes
+enable_quick_actions = yes
 only_current_desktop = auto
 
 [switch-apps]
-
-# Whether to enable switching apps
-enable = no 
-
-# Hotkey to switch apps
+# Optional app-level switcher.
+enable = no
 hotkey = alt+tab
-
-# Ignore minimal windows
 ignore_minimal = no
-
-# Only switch apps within the current virtual desktops: yes/no/auto
+override_icons =
 only_current_desktop = auto
+
+[log]
+level = info
+path =
 ```
 
 ## Running as Administrator (Optional)

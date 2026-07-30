@@ -17,19 +17,19 @@ use windows::Win32::{
         },
         GdiPlus::{
             FillModeAlternate, GdipAddPathArc, GdipClosePathFigure, GdipCreateBitmapFromHBITMAP,
-            GdipCreateFont, GdipCreateFontFamilyFromName, GdipCreateFromHDC, GdipCreatePath,
-            GdipCreatePen1, GdipCreateSolidFill, GdipCreateStringFormat, GdipDeleteBrush,
-            GdipDeleteFont, GdipDeleteFontFamily, GdipDeleteGraphics, GdipDeletePath,
-            GdipDeletePen, GdipDeleteStringFormat, GdipDisposeImage, GdipDrawImageRect,
-            GdipDrawLine, GdipDrawString, GdipFillPath, GdipFillRectangle, GdipGetPenBrushFill,
-            GdipGraphicsClear, GdipSetInterpolationMode, GdipSetSmoothingMode,
-            GdipSetStringFormatAlign, GdipSetStringFormatFlags, GdipSetStringFormatLineAlign,
-            GdipSetStringFormatTrimming, GdiplusShutdown, GdiplusStartup, GdiplusStartupInput,
-            GpBitmap, GpBrush, GpFont, GpFontFamily, GpGraphics, GpImage, GpPath, GpPen,
-            GpSolidFill, GpStringFormat, InterpolationModeHighQualityBicubic, Ok as GdiPlusOk,
-            RectF, SmoothingModeAntiAlias, StringAlignment, StringAlignmentCenter,
-            StringAlignmentFar, StringAlignmentNear, StringFormatFlagsNoWrap, StringTrimming,
-            StringTrimmingEllipsisCharacter, Unit,
+            GdipCreateBitmapFromHICON, GdipCreateFont, GdipCreateFontFamilyFromName,
+            GdipCreateFromHDC, GdipCreatePath, GdipCreatePen1, GdipCreateSolidFill,
+            GdipCreateStringFormat, GdipDeleteBrush, GdipDeleteFont, GdipDeleteFontFamily,
+            GdipDeleteGraphics, GdipDeletePath, GdipDeletePen, GdipDeleteStringFormat,
+            GdipDisposeImage, GdipDrawImageRect, GdipDrawLine, GdipDrawString, GdipFillPath,
+            GdipFillRectangle, GdipGetPenBrushFill, GdipGraphicsClear, GdipSetInterpolationMode,
+            GdipSetSmoothingMode, GdipSetStringFormatAlign, GdipSetStringFormatFlags,
+            GdipSetStringFormatLineAlign, GdipSetStringFormatTrimming, GdiplusShutdown,
+            GdiplusStartup, GdiplusStartupInput, GpBitmap, GpBrush, GpFont, GpFontFamily,
+            GpGraphics, GpImage, GpPath, GpPen, GpSolidFill, GpStringFormat,
+            InterpolationModeHighQualityBicubic, Ok as GdiPlusOk, RectF, SmoothingModeAntiAlias,
+            StringAlignment, StringAlignmentCenter, StringAlignmentFar, StringAlignmentNear,
+            StringFormatFlagsNoWrap, StringTrimming, StringTrimmingEllipsisCharacter, Unit,
         },
     },
     UI::{
@@ -283,7 +283,7 @@ impl GdiAAPainter {
                 GdipSetSmoothingMode(graphics.get(), SmoothingModeAntiAlias);
                 GdipSetInterpolationMode(graphics.get(), InterpolationModeHighQualityBicubic);
                 GdipGraphicsClear(graphics.get(), 0);
-                render_window_grid(graphics.get(), backing.hdc, session, quick_actions);
+                render_window_grid(graphics.get(), session, quick_actions);
             }
         }
 
@@ -497,7 +497,6 @@ impl GridColors {
 
 unsafe fn render_window_grid(
     graphics: *mut GpGraphics,
-    hdc: HDC,
     session: &WindowOverlaySession,
     quick_actions: bool,
 ) {
@@ -527,7 +526,7 @@ unsafe fn render_window_grid(
         icon_size,
     );
     unsafe {
-        draw_app_icon_fallback(hdc, session.app_icon, icon_rect);
+        draw_app_icon_fallback(graphics, session.app_icon, icon_rect);
     }
 
     let page_text = format!("{} of {}", session.selected + 1, session.items.len());
@@ -609,7 +608,7 @@ unsafe fn render_window_grid(
                 fallback_size,
             );
             unsafe {
-                draw_app_icon_fallback(hdc, session.app_icon, fallback_rect);
+                draw_app_icon_fallback(graphics, session.app_icon, fallback_rect);
             }
         }
 
@@ -837,22 +836,57 @@ unsafe fn draw_bitmap(graphics: *mut GpGraphics, bitmap: HBITMAP, rect: RectI) {
     }
 }
 
-unsafe fn draw_app_icon_fallback(hdc: HDC, icon: HICON, rect: RectI) {
-    if hdc.is_invalid() || icon.is_invalid() || rect.width <= 0 || rect.height <= 0 {
+struct GdiPlusIconBitmap(*mut GpBitmap);
+
+impl GdiPlusIconBitmap {
+    unsafe fn from_icon(icon: HICON) -> Option<Self> {
+        if icon.is_invalid() {
+            return None;
+        }
+
+        let mut bitmap = std::ptr::null_mut();
+        let status = unsafe { GdipCreateBitmapFromHICON(icon, &mut bitmap) };
+        if status == GdiPlusOk && !bitmap.is_null() {
+            Some(Self(bitmap))
+        } else {
+            if !bitmap.is_null() {
+                unsafe {
+                    GdipDisposeImage(bitmap.cast());
+                }
+            }
+            None
+        }
+    }
+
+    fn image(&self) -> *mut GpImage {
+        self.0.cast()
+    }
+}
+
+impl Drop for GdiPlusIconBitmap {
+    fn drop(&mut self) {
+        unsafe {
+            GdipDisposeImage(self.image());
+        }
+    }
+}
+
+unsafe fn draw_app_icon_fallback(graphics: *mut GpGraphics, icon: HICON, rect: RectI) {
+    if graphics.is_null() || icon.is_invalid() || rect.width <= 0 || rect.height <= 0 {
         return;
     }
 
+    let Some(bitmap) = (unsafe { GdiPlusIconBitmap::from_icon(icon) }) else {
+        return;
+    };
     unsafe {
-        let _ = DrawIconEx(
-            hdc,
-            rect.x,
-            rect.y,
-            icon,
-            rect.width,
-            rect.height,
-            0,
-            None,
-            DI_NORMAL,
+        GdipDrawImageRect(
+            graphics,
+            bitmap.image(),
+            rect.x as f32,
+            rect.y as f32,
+            rect.width as f32,
+            rect.height as f32,
         );
     }
 }
@@ -1082,6 +1116,17 @@ impl Coordinate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use windows::Win32::UI::WindowsAndMessaging::{LoadIconW, IDI_APPLICATION};
+
+    struct GdiPlusTestToken(usize);
+
+    impl Drop for GdiPlusTestToken {
+        fn drop(&mut self) {
+            unsafe {
+                GdiplusShutdown(self.0);
+            }
+        }
+    }
 
     #[test]
     fn grid_backing_bitmap_is_top_down_32_bit_bgra() {
@@ -1097,5 +1142,24 @@ mod tests {
         assert_eq!(header.biPlanes, 1);
         assert_eq!(header.biBitCount, 32);
         assert_eq!(header.biCompression, BI_RGB.0);
+    }
+
+    #[test]
+    fn grid_icon_is_converted_to_an_owned_gdiplus_bitmap() {
+        let startup_input = GdiplusStartupInput {
+            GdiplusVersion: 1,
+            ..Default::default()
+        };
+        let mut token = 0;
+        assert_eq!(
+            unsafe { GdiplusStartup(&mut token, &startup_input, std::ptr::null_mut()) },
+            GdiPlusOk
+        );
+        let _token = GdiPlusTestToken(token);
+        let icon = unsafe { LoadIconW(None, IDI_APPLICATION) }.unwrap();
+
+        let bitmap = unsafe { GdiPlusIconBitmap::from_icon(icon) };
+
+        assert!(bitmap.is_some());
     }
 }

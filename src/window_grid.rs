@@ -82,6 +82,17 @@ impl RectI {
     }
 }
 
+impl From<windows::Win32::Foundation::RECT> for RectI {
+    fn from(rect: windows::Win32::Foundation::RECT) -> Self {
+        Self::new(
+            rect.left,
+            rect.top,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+        )
+    }
+}
+
 impl WindowGridLayout {
     pub fn new(work_area: RectI, dpi_scale: f64, total_items: usize, selected: usize) -> Self {
         let selected = selected.min(total_items.saturating_sub(1));
@@ -286,6 +297,17 @@ mod tests {
     use super::*;
 
     const WORK_AREA: RectI = RectI::new(0, 0, 1920, 1080);
+
+    #[test]
+    fn converts_win32_rect_to_origin_and_size() {
+        let rect = windows::Win32::Foundation::RECT {
+            left: -1920,
+            top: 40,
+            right: 0,
+            bottom: 1080,
+        };
+        assert_eq!(RectI::from(rect), RectI::new(-1920, 40, 1920, 1040));
+    }
 
     #[test]
     fn balances_six_through_ten_items() {

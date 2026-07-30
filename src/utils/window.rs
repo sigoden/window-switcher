@@ -8,7 +8,10 @@ use windows::Win32::{
     Foundation::{ERROR_INSUFFICIENT_BUFFER, ERROR_SUCCESS, HWND, LPARAM, MAX_PATH, POINT, RECT},
     Graphics::{
         Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWM_CLOAKED_SHELL},
-        Gdi::{GetMonitorInfoW, MonitorFromPoint, MONITORINFO, MONITOR_DEFAULTTONEAREST},
+        Gdi::{
+            GetMonitorInfoW, MonitorFromPoint, MonitorFromWindow, MONITORINFO,
+            MONITOR_DEFAULTTONEAREST,
+        },
     },
     Storage::{
         EnhancedStorage::PKEY_AppUserModel_ID,
@@ -22,6 +25,7 @@ use windows::Win32::{
         },
     },
     UI::{
+        HiDpi::GetDpiForWindow,
         Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_MOUSE},
         Shell::PropertiesSystem::{IPropertyStore, SHGetPropertyStoreForWindow},
         WindowsAndMessaging::{
@@ -92,6 +96,32 @@ pub fn get_moinitor_rect() -> RECT {
         let hmonitor = MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
         let _ = GetMonitorInfoW(hmonitor, &mut mi);
         mi.rcMonitor
+    }
+}
+
+pub fn get_monitor_work_area(hwnd: HWND) -> RECT {
+    unsafe {
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut info = MONITORINFO {
+            cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        if GetMonitorInfoW(monitor, &mut info).as_bool() {
+            info.rcWork
+        } else {
+            RECT::default()
+        }
+    }
+}
+
+pub fn get_dpi_scale(hwnd: HWND) -> f64 {
+    unsafe {
+        let dpi = GetDpiForWindow(hwnd);
+        if dpi == 0 {
+            1.0
+        } else {
+            dpi as f64 / 96.0
+        }
     }
 }
 

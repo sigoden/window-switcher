@@ -1,7 +1,7 @@
 use crate::app::{SwitchAppsState, WindowOverlayItem};
 use crate::config::{Config, TitlePosition};
 use crate::thumbnail::capture_window_thumbnail;
-use crate::utils::{check_error, get_moinitor_rect, is_light_theme, is_win11};
+use crate::utils::{check_error, get_dpi_scale, get_moinitor_rect, is_light_theme, is_win11};
 
 use anyhow::{Context, Result};
 use windows::core::PCWSTR;
@@ -29,7 +29,6 @@ use windows::Win32::{
         },
     },
     UI::{
-        HiDpi::GetDpiForWindow,
         Input::KeyboardAndMouse::SetFocus,
         WindowsAndMessaging::{
             DrawIconEx, GetCursorPos, ShowWindow, UpdateLayeredWindow, DI_NORMAL, SW_HIDE, SW_SHOW,
@@ -844,17 +843,6 @@ fn draw_icons(
         let _ = DeleteObject(bitmap_scaled.into());
 
         bitmap_tmp
-    }
-}
-
-fn get_dpi_scale(hwnd: HWND) -> f64 {
-    unsafe {
-        let dpi = GetDpiForWindow(hwnd);
-        if dpi == 0 {
-            1.0
-        } else {
-            dpi as f64 / 96.0
-        }
     }
 }
 

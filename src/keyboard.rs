@@ -17,8 +17,8 @@ use windows::Win32::{
     UI::{
         Input::KeyboardAndMouse::{SCANCODE_LSHIFT, SCANCODE_RSHIFT},
         WindowsAndMessaging::{
-            CallNextHookEx, SendMessageTimeoutW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
-            KBDLLHOOKSTRUCT, LLKHF_UP, SMTO_ABORTIFHUNG, WH_KEYBOARD_LL,
+            CallNextHookEx, PostMessageW, SetWindowsHookExW, UnhookWindowsHookEx, HHOOK,
+            KBDLLHOOKSTRUCT, LLKHF_UP, WH_KEYBOARD_LL,
         },
     },
 };
@@ -34,6 +34,13 @@ static mut PREVIOUS_KEYCODE: u32 = 0;
 enum SwitchKeyAction {
     Advance { id: u32, reverse: bool },
     Cancel { id: u32 },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct QueuedSwitchMessage {
+    message: u32,
+    wparam: usize,
+    lparam: isize,
 }
 
 fn switch_key_action(
@@ -52,6 +59,51 @@ fn switch_key_action(
         })
     } else {
         None
+    }
+}
+
+fn message_for_done(id: u32) -> Option<QueuedSwitchMessage> {
+    let message = match id {
+        SWITCH_APPS_HOTKEY_ID => WM_USER_SWITCH_APPS_DONE,
+        SWITCH_WINDOWS_HOTKEY_ID => WM_USER_SWITCH_WINDOWS_DONE,
+        _ => return None,
+    };
+    Some(QueuedSwitchMessage {
+        message,
+        wparam: 0,
+        lparam: 0,
+    })
+}
+
+fn message_for_action(action: SwitchKeyAction) -> Option<QueuedSwitchMessage> {
+    let (message, lparam) = match action {
+        SwitchKeyAction::Advance { id, reverse } if id == SWITCH_APPS_HOTKEY_ID => {
+            (WM_USER_SWITCH_APPS, reverse as isize)
+        }
+        SwitchKeyAction::Advance { id, reverse } if id == SWITCH_WINDOWS_HOTKEY_ID => {
+            (WM_USER_SWITCH_WINDOWS, reverse as isize)
+        }
+        SwitchKeyAction::Cancel { id } if id == SWITCH_APPS_HOTKEY_ID => {
+            (WM_USER_SWITCH_APPS_CANCEL, 0)
+        }
+        SwitchKeyAction::Cancel { id } if id == SWITCH_WINDOWS_HOTKEY_ID => {
+            (WM_USER_SWITCH_WINDOWS_CANCEL, 0)
+        }
+        _ => return None,
+    };
+    Some(QueuedSwitchMessage {
+        message,
+        wparam: 0,
+        lparam,
+    })
+}
+
+fn dispatch_messages(
+    messages: &[QueuedSwitchMessage],
+    mut dispatch: impl FnMut(QueuedSwitchMessage),
+) {
+    for message in messages {
+        dispatch(*message);
     }
 }
 
@@ -105,17 +157,15 @@ struct HotKeyState {
     is_modifier_pressed: bool,
 }
 
-unsafe fn send_message_timeout(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) {
-    let mut result: usize = 0;
-    let _ = SendMessageTimeoutW(
-        hwnd,
-        msg,
-        wparam,
-        lparam,
-        SMTO_ABORTIFHUNG,
-        500,
-        Some(&mut result as *mut _ as *mut _),
-    );
+fn post_messages(hwnd: HWND, messages: &[QueuedSwitchMessage]) {
+    dispatch_messages(messages, |message| unsafe {
+        let _ = PostMessageW(
+            Some(hwnd),
+            message.message,
+            WPARAM(message.wparam),
+            LPARAM(message.lparam),
+        );
+    });
 }
 
 unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
@@ -191,52 +241,60 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
     }
     drop(keyboard_state);
 
+    let mut queued_messages = Vec::with_capacity(send_done_hotkeys.len() + 1);
     for id in send_done_hotkeys {
         if id == SWITCH_APPS_HOTKEY_ID {
-            send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_DONE, WPARAM(0), LPARAM(0));
+            if let Some(message) = message_for_done(id) {
+                queued_messages.push(message);
+            }
             IS_SWITCHING_APPS = false;
         } else if id == SWITCH_WINDOWS_HOTKEY_ID {
-            send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS_DONE, WPARAM(0), LPARAM(0));
+            if let Some(message) = message_for_done(id) {
+                queued_messages.push(message);
+            }
             IS_SWITCHING_WINDOWS = false;
         }
     }
 
+    let mut should_swallow = false;
     if let Some(action) = send_action_message {
         match action {
-            SwitchKeyAction::Advance { id, reverse } if id == SWITCH_APPS_HOTKEY_ID => {
-                send_message_timeout(
-                    WINDOW,
-                    WM_USER_SWITCH_APPS,
-                    WPARAM(0),
-                    LPARAM(reverse as isize),
-                );
+            SwitchKeyAction::Advance { id, .. } if id == SWITCH_APPS_HOTKEY_ID => {
+                if let Some(message) = message_for_action(action) {
+                    queued_messages.push(message);
+                }
                 IS_SWITCHING_APPS = true;
                 IS_SWITCHING_WINDOWS = false;
-                return LRESULT(1);
+                should_swallow = true;
             }
             SwitchKeyAction::Cancel { id } if id == SWITCH_APPS_HOTKEY_ID => {
-                send_message_timeout(WINDOW, WM_USER_SWITCH_APPS_CANCEL, WPARAM(0), LPARAM(0));
+                if let Some(message) = message_for_action(action) {
+                    queued_messages.push(message);
+                }
                 IS_SWITCHING_APPS = false;
-                return LRESULT(1);
+                should_swallow = true;
             }
-            SwitchKeyAction::Advance { id, reverse } if id == SWITCH_WINDOWS_HOTKEY_ID => {
-                send_message_timeout(
-                    WINDOW,
-                    WM_USER_SWITCH_WINDOWS,
-                    WPARAM(0),
-                    LPARAM(reverse as isize),
-                );
+            SwitchKeyAction::Advance { id, .. } if id == SWITCH_WINDOWS_HOTKEY_ID => {
+                if let Some(message) = message_for_action(action) {
+                    queued_messages.push(message);
+                }
                 IS_SWITCHING_APPS = false;
                 IS_SWITCHING_WINDOWS = true;
-                return LRESULT(1);
+                should_swallow = true;
             }
             SwitchKeyAction::Cancel { id } if id == SWITCH_WINDOWS_HOTKEY_ID => {
-                send_message_timeout(WINDOW, WM_USER_SWITCH_WINDOWS_CANCEL, WPARAM(0), LPARAM(0));
+                if let Some(message) = message_for_action(action) {
+                    queued_messages.push(message);
+                }
                 IS_SWITCHING_WINDOWS = false;
-                return LRESULT(1);
+                should_swallow = true;
             }
             _ => {}
         }
+    }
+    post_messages(WINDOW, &queued_messages);
+    if should_swallow {
+        return LRESULT(1);
     }
     CallNextHookEx(None, code, w_param, l_param)
 }
@@ -272,5 +330,59 @@ mod tests {
             switch_key_action(SWITCH_WINDOWS_HOTKEY_ID, 0x29, 0x01, false, false),
             None
         );
+    }
+
+    #[test]
+    fn queued_messages_route_scalar_action_done_and_cancel_payloads() {
+        assert_eq!(
+            message_for_action(SwitchKeyAction::Advance {
+                id: SWITCH_WINDOWS_HOTKEY_ID,
+                reverse: true,
+            }),
+            Some(QueuedSwitchMessage {
+                message: WM_USER_SWITCH_WINDOWS,
+                wparam: 0,
+                lparam: 1,
+            })
+        );
+        assert_eq!(
+            message_for_done(SWITCH_WINDOWS_HOTKEY_ID),
+            Some(QueuedSwitchMessage {
+                message: WM_USER_SWITCH_WINDOWS_DONE,
+                wparam: 0,
+                lparam: 0,
+            })
+        );
+        assert_eq!(
+            message_for_action(SwitchKeyAction::Cancel {
+                id: SWITCH_APPS_HOTKEY_ID,
+            }),
+            Some(QueuedSwitchMessage {
+                message: WM_USER_SWITCH_APPS_CANCEL,
+                wparam: 0,
+                lparam: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn dispatches_queued_messages_in_input_order() {
+        let messages = [
+            message_for_done(SWITCH_WINDOWS_HOTKEY_ID).unwrap(),
+            message_for_action(SwitchKeyAction::Advance {
+                id: SWITCH_APPS_HOTKEY_ID,
+                reverse: false,
+            })
+            .unwrap(),
+            message_for_action(SwitchKeyAction::Cancel {
+                id: SWITCH_APPS_HOTKEY_ID,
+            })
+            .unwrap(),
+        ];
+        let mut received = Vec::new();
+
+        dispatch_messages(&messages, |message| received.push(message));
+
+        assert_eq!(received, messages);
     }
 }

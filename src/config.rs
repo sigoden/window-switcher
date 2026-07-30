@@ -444,19 +444,18 @@ mod tests {
     }
 
     #[test]
-    fn test_config_title_position_parse() {
-        let ini_str = r#"
+    fn test_switch_windows_preview_config() {
+        let ini = Ini::load_from_str(
+            r#"
 [switch-windows]
-show_title = yes
-title_position = overlay
-show_app_icon = no
-enable_quick_actions = yes
-"#;
-        let ini = Ini::load_from_str(ini_str).unwrap();
+thumbnail_preview = no
+enable_quick_actions = no
+"#,
+        )
+        .unwrap();
+
         let config = Config::load(&ini).unwrap();
-        assert!(config.switch_windows_show_title);
-        assert_eq!(config.switch_windows_title_position, TitlePosition::Overlay);
-        assert!(!config.switch_windows_show_app_icon);
-        assert!(config.switch_windows_enable_quick_actions);
+        assert!(!config.switch_windows_thumbnail_preview);
+        assert!(!config.switch_windows_enable_quick_actions);
     }
 }

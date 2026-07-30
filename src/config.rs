@@ -13,6 +13,14 @@ pub const SWITCH_APPS_HOTKEY_ID: u32 = 2;
 
 const DEFAULT_CONFIG: &str = include_str!("../window-switcher.ini");
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TitlePosition {
+    #[default]
+    Bottom,
+    Top,
+    Overlay,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub trayicon: bool,
@@ -22,6 +30,10 @@ pub struct Config {
     pub switch_windows_blacklist: HashSet<String>,
     pub switch_windows_ignore_minimal: bool,
     pub switch_windows_thumbnail_preview: bool,
+    pub switch_windows_show_title: bool,
+    pub switch_windows_title_position: TitlePosition,
+    pub switch_windows_show_app_icon: bool,
+    pub switch_windows_enable_quick_actions: bool,
     switch_windows_only_current_desktop: Option<bool>,
     pub switch_apps_enable: bool,
     pub switch_apps_hotkey: Vec<Hotkey>,
@@ -45,6 +57,10 @@ impl Default for Config {
             switch_windows_blacklist: Default::default(),
             switch_windows_ignore_minimal: false,
             switch_windows_thumbnail_preview: true,
+            switch_windows_show_title: true,
+            switch_windows_title_position: TitlePosition::Bottom,
+            switch_windows_show_app_icon: true,
+            switch_windows_enable_quick_actions: true,
             switch_windows_only_current_desktop: None,
             switch_apps_enable: false,
             switch_apps_hotkey: vec![Hotkey::create(
@@ -109,6 +125,22 @@ impl Config {
             {
                 conf.switch_windows_thumbnail_preview = v;
             }
+            if let Some(v) = section.get("show_title").and_then(Config::to_bool) {
+                conf.switch_windows_show_title = v;
+            }
+            if let Some(v) = section.get("title_position") {
+                match v.trim().to_lowercase().as_str() {
+                    "top" => conf.switch_windows_title_position = TitlePosition::Top,
+                    "overlay" => conf.switch_windows_title_position = TitlePosition::Overlay,
+                    _ => conf.switch_windows_title_position = TitlePosition::Bottom,
+                }
+            }
+            if let Some(v) = section.get("show_app_icon").and_then(Config::to_bool) {
+                conf.switch_windows_show_app_icon = v;
+            }
+            if let Some(v) = section.get("enable_quick_actions").and_then(Config::to_bool) {
+                conf.switch_windows_enable_quick_actions = v;
+            }
             if let Some(v) = section
                 .get("only_current_desktop")
                 .and_then(Config::to_bool)
@@ -134,7 +166,7 @@ impl Config {
                     .split([',', ';'])
                     .filter_map(|v| {
                         v.trim()
-                            .split_once("=")
+                            .split_once('=')
                             .map(|(k, v)| (k.to_lowercase(), v.to_string()))
                     })
                     .collect();
@@ -409,5 +441,22 @@ mod tests {
         assert_eq!(hotkeys.len(), 1);
         assert_eq!(hotkeys[0].modifier, [0x38, 0x38]);
         assert_eq!(hotkeys[0].code, 0x29);
+    }
+
+    #[test]
+    fn test_config_title_position_parse() {
+        let ini_str = r#"
+[switch-windows]
+show_title = yes
+title_position = overlay
+show_app_icon = no
+enable_quick_actions = yes
+"#;
+        let ini = Ini::load_from_str(ini_str).unwrap();
+        let config = Config::load(&ini).unwrap();
+        assert!(config.switch_windows_show_title);
+        assert_eq!(config.switch_windows_title_position, TitlePosition::Overlay);
+        assert!(!config.switch_windows_show_app_icon);
+        assert!(config.switch_windows_enable_quick_actions);
     }
 }

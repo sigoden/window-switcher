@@ -1,4 +1,17 @@
-#include "winres.h"
+#ifdef __has_include
+#if __has_include(<winresrc.h>)
+#include <winresrc.h>
+#elif __has_include(<windows.h>)
+#include <windows.h>
+#endif
+#endif
+
+#ifndef LANG_ENGLISH
+#define LANG_ENGLISH 0x09
+#endif
+#ifndef SUBLANG_ENGLISH_US
+#define SUBLANG_ENGLISH_US 0x01
+#endif
 
 
 /////////////////////////////////////////////////////////////////////////////

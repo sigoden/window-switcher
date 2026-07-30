@@ -1,7 +1,7 @@
 use crate::config::{edit_config_file, Config};
 use crate::foreground::ForegroundWatcher;
 use crate::keyboard::KeyboardListener;
-use crate::painter::GdiAAPainter;
+use crate::painter::{GdiAAPainter, ThumbnailHitTarget};
 use crate::startup::Startup;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
@@ -16,13 +16,17 @@ use windows::core::{w, PCWSTR};
 use windows::Win32::{
     Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
-    UI::WindowsAndMessaging::{
-        CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, GetMessageW,
-        GetWindowLongPtrW, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW,
-        RegisterWindowMessageW, SetWindowLongPtrW, TranslateMessage, CS_HREDRAW, CS_VREDRAW,
-        CW_USEDEFAULT, GWL_STYLE, HICON, HTCLIENT, IDC_ARROW, MSG, WINDOW_STYLE, WM_COMMAND,
-        WM_ERASEBKGND, WM_LBUTTONUP, WM_NCHITTEST, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION,
-        WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+    UI::{
+        Controls::WM_MOUSELEAVE,
+        Input::KeyboardAndMouse::{TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT},
+        WindowsAndMessaging::{
+            CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, GetMessageW,
+            GetWindowLongPtrW, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW,
+            RegisterWindowMessageW, SetWindowLongPtrW, TranslateMessage, CS_HREDRAW, CS_VREDRAW,
+            CW_USEDEFAULT, GWL_STYLE, HICON, HTCLIENT, IDC_ARROW, MSG, WINDOW_STYLE, WM_CLOSE,
+            WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP, WM_MBUTTONUP, WM_MOUSEMOVE, WM_NCHITTEST,
+            WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+        },
     },
 };
 
@@ -87,6 +91,7 @@ impl App {
                 modifier_released: true,
                 overlay_windows: None,
                 overlay_index: 0,
+                hovered_close_index: None,
             },
             switch_apps_state: None,
             cached_icons: Default::default(),
@@ -269,6 +274,55 @@ impl App {
                 app.click();
                 app.click_switch_windows();
             }
+            WM_MBUTTONUP => {
+                let app = get_app(hwnd)?;
+                if let Some(overlay) = app.switch_windows_state.overlay_windows.as_ref() {
+                    if app.config.switch_windows_enable_quick_actions {
+                        if let Some(target) = app.painter.hit_test_switch_windows(overlay.len(), &app.config) {
+                            match target {
+                                ThumbnailHitTarget::Card(i) | ThumbnailHitTarget::CloseButton(i) => {
+                                    app.close_overlay_window(i);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            WM_MOUSEMOVE => {
+                let app = get_app(hwnd)?;
+                if let Some(overlay) = app.switch_windows_state.overlay_windows.as_ref() {
+                    if app.config.switch_windows_enable_quick_actions {
+                        let new_hover = match app.painter.hit_test_switch_windows(overlay.len(), &app.config) {
+                            Some(ThumbnailHitTarget::CloseButton(i)) => Some(i),
+                            _ => None,
+                        };
+                        if app.switch_windows_state.hovered_close_index != new_hover {
+                            app.switch_windows_state.hovered_close_index = new_hover;
+                            let idx = app.switch_windows_state.overlay_index;
+                            app.painter.paint_switch_windows(overlay, idx, &app.config, new_hover);
+                        }
+                    }
+                }
+                let mut tme = TRACKMOUSEEVENT {
+                    cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                    dwFlags: TME_LEAVE,
+                    hwndTrack: hwnd,
+                    dwHoverTime: 0,
+                };
+                unsafe {
+                    let _ = TrackMouseEvent(&mut tme);
+                }
+            }
+            WM_MOUSELEAVE => {
+                let app = get_app(hwnd)?;
+                if app.switch_windows_state.hovered_close_index.is_some() {
+                    app.switch_windows_state.hovered_close_index = None;
+                    if let Some(overlay) = app.switch_windows_state.overlay_windows.as_ref() {
+                        let idx = app.switch_windows_state.overlay_index;
+                        app.painter.paint_switch_windows(overlay, idx, &app.config, None);
+                    }
+                }
+            }
             WM_COMMAND => {
                 let value = wparam.0 as u32;
                 let kind = ((value >> 16) & 0xffff) as u16;
@@ -383,6 +437,7 @@ impl App {
                     modifier_released: false,
                     overlay_windows: None,
                     overlay_index: 0,
+                    hovered_close_index: None,
                 };
                 set_foreground_window(hwnd);
 
@@ -412,7 +467,7 @@ impl App {
                 }
                 let idx = self.switch_windows_state.overlay_index;
                 let windows = self.switch_windows_state.overlay_windows.as_ref().unwrap();
-                self.painter.paint_switch_windows(windows, idx);
+                self.painter.paint_switch_windows(windows, idx, &self.config, self.switch_windows_state.hovered_close_index);
                 return Ok(true);
             }
             return Ok(false);
@@ -439,9 +494,25 @@ impl App {
             return Ok(false);
         }
 
-        let overlay: Vec<(HWND, String)> = window_list
+        let overlay: Vec<WindowOverlayItem> = window_list
             .iter()
-            .map(|(h, title)| (*h, title.clone()))
+            .map(|(h, title)| {
+                let hicon = self
+                    .cached_icons
+                    .entry(module_path.clone())
+                    .or_insert_with(|| {
+                        get_app_icon(
+                            &self.config.switch_apps_override_icons,
+                            &module_path,
+                            *h,
+                        )
+                    });
+                WindowOverlayItem {
+                    hwnd: *h,
+                    title: title.clone(),
+                    hicon: Some(*hicon),
+                }
+            })
             .collect();
 
         let index = if reverse { overlay.len() - 1 } else { 1 };
@@ -449,7 +520,7 @@ impl App {
         self.switch_windows_state.overlay_windows = Some(overlay.clone());
         self.switch_windows_state.overlay_index = index;
 
-        self.painter.paint_switch_windows(&overlay, index);
+        self.painter.paint_switch_windows(&overlay, index, &self.config, self.switch_windows_state.hovered_close_index);
         self.cancel_switch_app();
 
         Ok(true)
@@ -457,19 +528,46 @@ impl App {
 
     fn do_switch_windows(&mut self) {
         if let Some(overlay) = self.switch_windows_state.overlay_windows.take() {
-            if let Some((hwnd, _)) = overlay.get(self.switch_windows_state.overlay_index) {
-                set_foreground_window(*hwnd);
+            if let Some(item) = overlay.get(self.switch_windows_state.overlay_index) {
+                set_foreground_window(item.hwnd);
             }
             self.painter.unpaint_switch_windows();
         }
     }
 
     fn click_switch_windows(&mut self) {
-        if self.switch_windows_state.overlay_windows.is_some() {
-            let windows_len = self.switch_windows_state.overlay_windows.as_ref().unwrap().len();
-            if let Some(i) = self.painter.find_clicked_switch_windows_index(windows_len) {
-                self.switch_windows_state.overlay_index = i;
-                self.do_switch_windows();
+        if let Some(overlay) = self.switch_windows_state.overlay_windows.as_ref() {
+            match self.painter.hit_test_switch_windows(overlay.len(), &self.config) {
+                Some(ThumbnailHitTarget::CloseButton(i)) => {
+                    self.close_overlay_window(i);
+                }
+                Some(ThumbnailHitTarget::Card(i)) => {
+                    self.switch_windows_state.overlay_index = i;
+                    self.do_switch_windows();
+                }
+                None => {}
+            }
+        }
+    }
+
+    fn close_overlay_window(&mut self, index: usize) {
+        self.switch_windows_state.hovered_close_index = None;
+        if let Some(overlay) = self.switch_windows_state.overlay_windows.as_mut() {
+            if index < overlay.len() {
+                let item = overlay.remove(index);
+                unsafe {
+                    let _ = PostMessageW(Some(item.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
+                }
+                if overlay.is_empty() {
+                    self.switch_windows_state.overlay_windows = None;
+                    self.painter.unpaint_switch_windows();
+                } else {
+                    if self.switch_windows_state.overlay_index >= overlay.len() {
+                        self.switch_windows_state.overlay_index = overlay.len() - 1;
+                    }
+                    let idx = self.switch_windows_state.overlay_index;
+                    self.painter.paint_switch_windows(overlay, idx, &self.config, self.switch_windows_state.hovered_close_index);
+                }
             }
         }
     }
@@ -585,12 +683,20 @@ fn get_app(hwnd: HWND) -> Result<&'static mut App> {
 struct SwitchWindowsState {
     cache: Option<(String, HWND, usize, Vec<isize>)>,
     modifier_released: bool,
-    overlay_windows: Option<Vec<(HWND, String)>>,
+    overlay_windows: Option<Vec<WindowOverlayItem>>,
     overlay_index: usize,
+    hovered_close_index: Option<usize>,
 }
 
 #[derive(Debug)]
 pub struct SwitchAppsState {
     pub apps: Vec<(HICON, HWND)>,
     pub index: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct WindowOverlayItem {
+    pub hwnd: HWND,
+    pub title: String,
+    pub hicon: Option<HICON>,
 }

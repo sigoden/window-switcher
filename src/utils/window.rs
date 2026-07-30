@@ -25,7 +25,7 @@ use windows::Win32::{
         },
     },
     UI::{
-        HiDpi::GetDpiForWindow,
+        HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI},
         Input::KeyboardAndMouse::{SendInput, INPUT, INPUT_MOUSE},
         Shell::PropertiesSystem::{IPropertyStore, SHGetPropertyStoreForWindow},
         WindowsAndMessaging::{
@@ -116,12 +116,20 @@ pub fn get_monitor_work_area(hwnd: HWND) -> RECT {
 
 pub fn get_dpi_scale(hwnd: HWND) -> f64 {
     unsafe {
-        let dpi = GetDpiForWindow(hwnd);
-        if dpi == 0 {
-            1.0
-        } else {
-            dpi as f64 / 96.0
-        }
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut dpi_x = 0;
+        let mut dpi_y = 0;
+        let dpi = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut dpi_x, &mut dpi_y)
+            .ok()
+            .map(|_| dpi_x);
+        dpi_scale_from_effective_dpi(dpi)
+    }
+}
+
+fn dpi_scale_from_effective_dpi(dpi: Option<u32>) -> f64 {
+    match dpi {
+        Some(dpi) if dpi > 0 => dpi as f64 / 96.0,
+        _ => 1.0,
     }
 }
 
@@ -534,4 +542,22 @@ extern "system" fn enum_window(hwnd: HWND, lparam: LPARAM) -> BOOL {
     let windows: &mut Vec<HWND> = unsafe { &mut *(lparam.0 as *mut Vec<HWND>) };
     windows.push(hwnd);
     BOOL(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn effective_monitor_dpi_converts_to_layout_scale() {
+        assert_eq!(dpi_scale_from_effective_dpi(Some(120)), 1.25);
+        assert_eq!(dpi_scale_from_effective_dpi(Some(144)), 1.5);
+        assert_eq!(dpi_scale_from_effective_dpi(Some(192)), 2.0);
+    }
+
+    #[test]
+    fn unavailable_effective_monitor_dpi_falls_back_to_one() {
+        assert_eq!(dpi_scale_from_effective_dpi(None), 1.0);
+        assert_eq!(dpi_scale_from_effective_dpi(Some(0)), 1.0);
+    }
 }

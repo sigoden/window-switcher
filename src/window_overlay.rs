@@ -20,6 +20,7 @@ pub(crate) struct WindowOverlaySession {
     #[allow(dead_code)]
     pub original_hwnd: HWND,
     pub work_area: RectI,
+    pub dpi_scale: f64,
     pub items: Vec<WindowOverlayItem>,
     pub selected: usize,
     pub hovered: Option<usize>,

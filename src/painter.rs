@@ -11,10 +11,11 @@ use windows::Win32::{
     Foundation::{COLORREF, HWND, POINT, RECT, SIZE},
     Graphics::{
         Gdi::{
-            CreateCompatibleBitmap, CreateCompatibleDC, CreateRoundRectRgn, CreateSolidBrush,
-            DeleteDC, DeleteObject, FillRect, FillRgn, GetDC, GetSysColor, ReleaseDC, SelectObject,
-            SetStretchBltMode, StretchBlt, AC_SRC_ALPHA, AC_SRC_OVER, BLENDFUNCTION,
-            COLOR_HIGHLIGHT, HALFTONE, HBITMAP, HDC, HGDIOBJ, HPALETTE, SRCCOPY,
+            CreateCompatibleBitmap, CreateCompatibleDC, CreateDIBSection, CreateRoundRectRgn,
+            CreateSolidBrush, DeleteDC, DeleteObject, FillRect, FillRgn, GetDC, GetSysColor,
+            ReleaseDC, SelectObject, SetStretchBltMode, StretchBlt, AC_SRC_ALPHA, AC_SRC_OVER,
+            BITMAPINFO, BITMAPINFOHEADER, BI_RGB, BLENDFUNCTION, COLOR_HIGHLIGHT, DIB_RGB_COLORS,
+            HALFTONE, HBITMAP, HDC, HGDIOBJ, HPALETTE, SRCCOPY,
         },
         GdiPlus::{
             FillModeAlternate, GdipAddPathArc, GdipClosePathFigure, GdipCreateBitmapFromHBITMAP,
@@ -768,13 +769,33 @@ impl GridBackingSurface {
             return None;
         }
 
-        let bitmap = unsafe { CreateCompatibleBitmap(hdc_screen, width, height) };
-        if bitmap.is_invalid() {
-            unsafe {
-                let _ = DeleteDC(hdc);
+        let bitmap_info = grid_bitmap_info(width, height);
+        let mut bits = std::ptr::null_mut();
+        let bitmap = match unsafe {
+            CreateDIBSection(
+                Some(hdc_screen),
+                &bitmap_info,
+                DIB_RGB_COLORS,
+                &mut bits,
+                None,
+                0,
+            )
+        } {
+            Ok(bitmap) if !bits.is_null() => bitmap,
+            Ok(bitmap) => {
+                unsafe {
+                    let _ = DeleteObject(bitmap.into());
+                    let _ = DeleteDC(hdc);
+                }
+                return None;
             }
-            return None;
-        }
+            Err(_) => {
+                unsafe {
+                    let _ = DeleteDC(hdc);
+                }
+                return None;
+            }
+        };
 
         let previous = unsafe { SelectObject(hdc, bitmap.into()) };
         if previous.is_invalid() {
@@ -790,6 +811,21 @@ impl GridBackingSurface {
             bitmap,
             previous,
         })
+    }
+}
+
+fn grid_bitmap_info(width: i32, height: i32) -> BITMAPINFO {
+    BITMAPINFO {
+        bmiHeader: BITMAPINFOHEADER {
+            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+            biWidth: width,
+            biHeight: -height,
+            biPlanes: 1,
+            biBitCount: 32,
+            biCompression: BI_RGB.0,
+            ..Default::default()
+        },
+        ..Default::default()
     }
 }
 
@@ -1506,5 +1542,26 @@ impl ThumbCoordinate {
             border_size,
             title_height,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn grid_backing_bitmap_is_top_down_32_bit_bgra() {
+        let bitmap_info = grid_bitmap_info(640, 480);
+        let header = bitmap_info.bmiHeader;
+
+        assert_eq!(
+            header.biSize,
+            std::mem::size_of::<BITMAPINFOHEADER>() as u32
+        );
+        assert_eq!(header.biWidth, 640);
+        assert_eq!(header.biHeight, -480);
+        assert_eq!(header.biPlanes, 1);
+        assert_eq!(header.biBitCount, 32);
+        assert_eq!(header.biCompression, BI_RGB.0);
     }
 }

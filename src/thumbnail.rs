@@ -6,9 +6,7 @@ use windows::Win32::{
         PatBlt, ReleaseDC, SelectObject, SetStretchBltMode, StretchBlt, BLACKNESS, HALFTONE,
         HBITMAP, HDC, HGDIOBJ, SRCCOPY,
     },
-    UI::WindowsAndMessaging::{
-        DrawIconEx, GetClassLongPtrW, GetWindowPlacement, DI_NORMAL, GCLP_HICON, WINDOWPLACEMENT,
-    },
+    UI::WindowsAndMessaging::{GetWindowPlacement, WINDOWPLACEMENT},
 };
 
 const PW_RENDERFULLCONTENT: u32 = 0x00000002;
@@ -23,10 +21,6 @@ pub struct OwnedBitmap(HBITMAP);
 impl OwnedBitmap {
     pub fn handle(&self) -> HBITMAP {
         self.0
-    }
-
-    fn into_raw(mut self) -> HBITMAP {
-        std::mem::take(&mut self.0)
     }
 }
 
@@ -76,19 +70,6 @@ impl Drop for SelectedBitmapDc {
             let _ = DeleteDC(self.hdc);
         }
     }
-}
-
-pub fn capture_window_thumbnail(
-    hwnd: HWND,
-    hdc_screen: HDC,
-    target_width: i32,
-    target_height: i32,
-) -> HBITMAP {
-    capture_window_thumbnail_cached(hwnd, target_width, target_height)
-        .map(OwnedBitmap::into_raw)
-        .unwrap_or_else(|| unsafe {
-            capture_icon_fallback(hwnd, hdc_screen, target_width, target_height)
-        })
 }
 
 pub fn capture_window_thumbnail_cached(
@@ -205,55 +186,6 @@ unsafe fn get_window_content_size(hwnd: HWND) -> Option<(i32, i32)> {
     let w = rect.right - rect.left;
     let h = rect.bottom - rect.top;
     Some((w, h))
-}
-
-unsafe fn capture_icon_fallback(
-    hwnd: HWND,
-    hdc_screen: HDC,
-    target_width: i32,
-    target_height: i32,
-) -> HBITMAP {
-    if target_width <= 0 || target_height <= 0 || hdc_screen.is_invalid() {
-        return HBITMAP::default();
-    }
-
-    let hdc_target = CreateCompatibleDC(Some(hdc_screen));
-    if hdc_target.is_invalid() {
-        return HBITMAP::default();
-    }
-
-    let bitmap_target = OwnedBitmap(CreateCompatibleBitmap(
-        hdc_screen,
-        target_width,
-        target_height,
-    ));
-    if bitmap_target.handle().is_invalid() {
-        let _ = DeleteDC(hdc_target);
-        return HBITMAP::default();
-    }
-    let Some(_target_dc) = SelectedBitmapDc::new(hdc_target, bitmap_target.handle()) else {
-        return HBITMAP::default();
-    };
-
-    let hicon = GetClassLongPtrW(hwnd, GCLP_HICON);
-    if hicon != 0 {
-        let icon_size = target_width.min(target_height) * 3 / 4;
-        let x = (target_width - icon_size) / 2;
-        let y = (target_height - icon_size) / 2;
-        let _ = DrawIconEx(
-            hdc_target,
-            x,
-            y,
-            windows::Win32::UI::WindowsAndMessaging::HICON(hicon as _),
-            icon_size,
-            icon_size,
-            0,
-            None,
-            DI_NORMAL,
-        );
-    }
-
-    bitmap_target.into_raw()
 }
 
 #[cfg(test)]

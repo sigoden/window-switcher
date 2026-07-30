@@ -1,31 +1,36 @@
 use crate::config::{edit_config_file, Config};
 use crate::foreground::ForegroundWatcher;
 use crate::keyboard::KeyboardListener;
-use crate::painter::{GdiAAPainter, ThumbnailHitTarget};
+use crate::painter::GdiAAPainter;
 use crate::startup::Startup;
+use crate::thumbnail::capture_window_thumbnail_cached;
 use crate::trayicon::TrayIcon;
 use crate::utils::{
-    check_error, get_app_icon, get_foreground_window, get_window_user_data, is_iconic_window,
-    is_running_as_admin, list_windows, set_foreground_window, set_window_user_data,
+    check_error, get_app_icon, get_dpi_scale, get_foreground_window, get_monitor_work_area,
+    get_window_user_data, is_iconic_window, is_running_as_admin, list_windows,
+    set_foreground_window, set_window_user_data,
 };
+use crate::window_grid::{advance_index, GridHitTarget, PointI, RectI, WindowGridLayout};
+use crate::window_overlay::{WindowOverlayItem, WindowOverlaySession};
 
 use anyhow::{anyhow, Result};
 use indexmap::IndexSet;
 use std::collections::HashMap;
 use windows::core::{w, PCWSTR};
 use windows::Win32::{
-    Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM},
+    Foundation::{GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, POINT, WPARAM},
     System::LibraryLoader::GetModuleHandleW,
     UI::{
         Controls::WM_MOUSELEAVE,
         Input::KeyboardAndMouse::{TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT},
         WindowsAndMessaging::{
-            CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, GetMessageW,
-            GetWindowLongPtrW, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW,
-            RegisterWindowMessageW, SetWindowLongPtrW, TranslateMessage, CS_HREDRAW, CS_VREDRAW,
-            CW_USEDEFAULT, GWL_STYLE, HICON, HTCLIENT, IDC_ARROW, MSG, WINDOW_STYLE, WM_CLOSE,
-            WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP, WM_MBUTTONUP, WM_MOUSEMOVE, WM_NCHITTEST,
-            WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+            CreateWindowExW, DefWindowProcW, DestroyIcon, DispatchMessageW, GetCursorPos,
+            GetMessageW, GetWindowLongPtrW, IsWindow, LoadCursorW, PostMessageW, PostQuitMessage,
+            RegisterClassW, RegisterWindowMessageW, SetWindowLongPtrW, TranslateMessage,
+            CS_HREDRAW, CS_VREDRAW, CW_USEDEFAULT, GWL_STYLE, HICON, HTCLIENT, IDC_ARROW, MSG,
+            WINDOW_STYLE, WM_CLOSE, WM_COMMAND, WM_ERASEBKGND, WM_LBUTTONUP, WM_MBUTTONUP,
+            WM_MOUSEMOVE, WM_NCHITTEST, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION, WS_EX_LAYERED,
+            WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
         },
     },
 };
@@ -89,9 +94,7 @@ impl App {
             switch_windows_state: SwitchWindowsState {
                 cache: None,
                 modifier_released: true,
-                overlay_windows: None,
-                overlay_index: 0,
-                hovered_close_index: None,
+                overlay: None,
             },
             switch_apps_state: None,
             cached_icons: Default::default(),
@@ -253,12 +256,12 @@ impl App {
                     .as_ref()
                     .and_then(|state| state.apps.get(state.index).map(|(_, id)| *id))
                     .unwrap_or_else(get_foreground_window);
+                app.cancel_switch_app();
                 if app.config.switch_windows_thumbnail_preview {
                     app.switch_windows_overlay(hwnd, reverse)?;
                 } else {
                     app.switch_windows(hwnd, reverse)?;
                 }
-                app.cancel_switch_app();
             }
             WM_USER_SWITCH_WINDOWS_DONE => {
                 debug!("message WM_USER_SWITCH_WINDOWS_DONE");
@@ -276,13 +279,11 @@ impl App {
             }
             WM_MBUTTONUP => {
                 let app = get_app(hwnd)?;
-                if let Some(overlay) = app.switch_windows_state.overlay_windows.as_ref() {
-                    if app.config.switch_windows_enable_quick_actions {
-                        if let Some(target) = app.painter.hit_test_switch_windows(overlay.len(), &app.config) {
-                            match target {
-                                ThumbnailHitTarget::Card(i) | ThumbnailHitTarget::CloseButton(i) => {
-                                    app.close_overlay_window(i);
-                                }
+                if app.config.switch_windows_enable_quick_actions {
+                    if let Some(target) = app.hit_test_window_grid() {
+                        match target {
+                            GridHitTarget::Card(index) | GridHitTarget::CloseButton(index) => {
+                                app.close_overlay_window(index);
                             }
                         }
                     }
@@ -290,18 +291,14 @@ impl App {
             }
             WM_MOUSEMOVE => {
                 let app = get_app(hwnd)?;
-                if let Some(overlay) = app.switch_windows_state.overlay_windows.as_ref() {
-                    if app.config.switch_windows_enable_quick_actions {
-                        let new_hover = match app.painter.hit_test_switch_windows(overlay.len(), &app.config) {
-                            Some(ThumbnailHitTarget::CloseButton(i)) => Some(i),
-                            _ => None,
-                        };
-                        if app.switch_windows_state.hovered_close_index != new_hover {
-                            app.switch_windows_state.hovered_close_index = new_hover;
-                            let idx = app.switch_windows_state.overlay_index;
-                            app.painter.paint_switch_windows(overlay, idx, &app.config, new_hover);
-                        }
-                    }
+                let target = app.hit_test_window_grid();
+                let hover_changed = app
+                    .switch_windows_state
+                    .overlay
+                    .as_mut()
+                    .is_some_and(|session| update_overlay_hover(session, target));
+                if hover_changed {
+                    app.repaint_window_grid();
                 }
                 let mut tme = TRACKMOUSEEVENT {
                     cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
@@ -315,12 +312,13 @@ impl App {
             }
             WM_MOUSELEAVE => {
                 let app = get_app(hwnd)?;
-                if app.switch_windows_state.hovered_close_index.is_some() {
-                    app.switch_windows_state.hovered_close_index = None;
-                    if let Some(overlay) = app.switch_windows_state.overlay_windows.as_ref() {
-                        let idx = app.switch_windows_state.overlay_index;
-                        app.painter.paint_switch_windows(overlay, idx, &app.config, None);
-                    }
+                let hover_changed = app
+                    .switch_windows_state
+                    .overlay
+                    .as_mut()
+                    .is_some_and(|session| update_overlay_hover(session, None));
+                if hover_changed {
+                    app.repaint_window_grid();
                 }
             }
             WM_COMMAND => {
@@ -367,8 +365,10 @@ impl App {
             self.is_admin,
         )?;
         debug!(
-            "switch windows: hwnd:{hwnd:?} reverse:{reverse} state:{:?}",
-            self.switch_windows_state
+            "switch windows: hwnd:{hwnd:?} reverse:{reverse} cache:{:?} modifier_released:{} overlay_active:{}",
+            self.switch_windows_state.cache,
+            self.switch_windows_state.modifier_released,
+            self.switch_windows_state.overlay.is_some(),
         );
         let module_path = match windows
             .iter()
@@ -435,9 +435,7 @@ impl App {
                 self.switch_windows_state = SwitchWindowsState {
                     cache: Some((module_path.clone(), state_id, index, state_windows)),
                     modifier_released: false,
-                    overlay_windows: None,
-                    overlay_index: 0,
-                    hovered_close_index: None,
+                    overlay: None,
                 };
                 set_foreground_window(hwnd);
 
@@ -447,30 +445,30 @@ impl App {
     }
 
     fn switch_windows_overlay(&mut self, hwnd: HWND, reverse: bool) -> Result<bool> {
-        if let Some(overlay) = self.switch_windows_state.overlay_windows.as_mut() {
-            let len = overlay.len();
-            if len > 1 {
-                if reverse {
-                    self.switch_windows_state.overlay_index =
-                        if self.switch_windows_state.overlay_index == 0 {
-                            len - 1
-                        } else {
-                            self.switch_windows_state.overlay_index - 1
-                        };
-                } else {
-                    self.switch_windows_state.overlay_index =
-                        if self.switch_windows_state.overlay_index >= len - 1 {
-                            0
-                        } else {
-                            self.switch_windows_state.overlay_index + 1
-                        };
-                }
-                let idx = self.switch_windows_state.overlay_index;
-                let windows = self.switch_windows_state.overlay_windows.as_ref().unwrap();
-                self.painter.paint_switch_windows(windows, idx, &self.config, self.switch_windows_state.hovered_close_index);
-                return Ok(true);
+        if self.switch_windows_state.overlay.is_some() {
+            if !self.prune_invalid_overlay() {
+                return Ok(false);
             }
-            return Ok(false);
+
+            let dpi_scale = get_dpi_scale(self.hwnd);
+            let original_hwnd = self
+                .switch_windows_state
+                .overlay
+                .as_ref()
+                .map(|session| session.original_hwnd)
+                .unwrap_or(hwnd);
+            let work_area = RectI::from(get_monitor_work_area(original_hwnd));
+            if let Some(session) = self.switch_windows_state.overlay.as_mut() {
+                session.selected = advance_index(session.selected, session.items.len(), reverse);
+                session.layout = WindowGridLayout::new(
+                    work_area,
+                    dpi_scale,
+                    session.items.len(),
+                    session.selected,
+                );
+            }
+            self.repaint_window_grid();
+            return Ok(true);
         }
 
         let windows = list_windows(
@@ -494,80 +492,173 @@ impl App {
             return Ok(false);
         }
 
-        let overlay: Vec<WindowOverlayItem> = window_list
+        let app_name = std::path::Path::new(&module_path)
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .unwrap_or("Application")
+            .to_string();
+        let app_icon = *self
+            .cached_icons
+            .entry(module_path.clone())
+            .or_insert_with(|| {
+                get_app_icon(
+                    &self.config.switch_apps_override_icons,
+                    &module_path,
+                    window_list[0].0,
+                )
+            });
+        let selected = if reverse { window_list.len() - 1 } else { 1 };
+        let work_area = RectI::from(get_monitor_work_area(hwnd));
+        let dpi_scale = get_dpi_scale(self.hwnd);
+        let layout = WindowGridLayout::new(work_area, dpi_scale, window_list.len(), selected);
+        let preview_width = layout.cards[0].preview.width;
+        let preview_height = layout.cards[0].preview.height;
+        let items = window_list
             .iter()
-            .map(|(h, title)| {
-                let hicon = self
-                    .cached_icons
-                    .entry(module_path.clone())
-                    .or_insert_with(|| {
-                        get_app_icon(
-                            &self.config.switch_apps_override_icons,
-                            &module_path,
-                            *h,
-                        )
-                    });
-                WindowOverlayItem {
-                    hwnd: *h,
-                    title: title.clone(),
-                    hicon: Some(*hicon),
-                }
+            .map(|(item_hwnd, title)| WindowOverlayItem {
+                hwnd: *item_hwnd,
+                title: normalize_overlay_title(title),
+                thumbnail: capture_window_thumbnail_cached(
+                    *item_hwnd,
+                    preview_width,
+                    preview_height,
+                ),
             })
             .collect();
 
-        let index = if reverse { overlay.len() - 1 } else { 1 };
-
-        self.switch_windows_state.overlay_windows = Some(overlay.clone());
-        self.switch_windows_state.overlay_index = index;
-
-        self.painter.paint_switch_windows(&overlay, index, &self.config, self.switch_windows_state.hovered_close_index);
-        self.cancel_switch_app();
+        self.switch_windows_state.overlay = Some(WindowOverlaySession {
+            app_name,
+            app_icon,
+            original_hwnd: hwnd,
+            items,
+            selected,
+            hovered: None,
+            hovered_close: None,
+            layout,
+        });
+        self.repaint_window_grid();
 
         Ok(true)
     }
 
     fn do_switch_windows(&mut self) {
-        if let Some(overlay) = self.switch_windows_state.overlay_windows.take() {
-            if let Some(item) = overlay.get(self.switch_windows_state.overlay_index) {
+        if !self.prune_invalid_overlay() {
+            return;
+        }
+        if let Some(session) = self.switch_windows_state.overlay.take() {
+            if let Some(item) = session.items.get(session.selected) {
                 set_foreground_window(item.hwnd);
             }
-            self.painter.unpaint_switch_windows();
+            self.painter.unpaint_window_grid();
         }
     }
 
     fn click_switch_windows(&mut self) {
-        if let Some(overlay) = self.switch_windows_state.overlay_windows.as_ref() {
-            match self.painter.hit_test_switch_windows(overlay.len(), &self.config) {
-                Some(ThumbnailHitTarget::CloseButton(i)) => {
-                    self.close_overlay_window(i);
-                }
-                Some(ThumbnailHitTarget::Card(i)) => {
-                    self.switch_windows_state.overlay_index = i;
+        match self.hit_test_window_grid() {
+            Some(GridHitTarget::CloseButton(index)) => {
+                self.close_overlay_window(index);
+            }
+            Some(GridHitTarget::Card(index)) => {
+                if let Some(session) = self.switch_windows_state.overlay.as_mut() {
+                    if index < session.items.len() {
+                        session.selected = index;
+                    }
                     self.do_switch_windows();
                 }
-                None => {}
             }
+            None => {}
         }
     }
 
     fn close_overlay_window(&mut self, index: usize) {
-        self.switch_windows_state.hovered_close_index = None;
-        if let Some(overlay) = self.switch_windows_state.overlay_windows.as_mut() {
-            if index < overlay.len() {
-                let item = overlay.remove(index);
-                unsafe {
-                    let _ = PostMessageW(Some(item.hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
-                }
-                if overlay.is_empty() {
-                    self.switch_windows_state.overlay_windows = None;
-                    self.painter.unpaint_switch_windows();
-                } else {
-                    if self.switch_windows_state.overlay_index >= overlay.len() {
-                        self.switch_windows_state.overlay_index = overlay.len() - 1;
-                    }
-                    let idx = self.switch_windows_state.overlay_index;
-                    self.painter.paint_switch_windows(overlay, idx, &self.config, self.switch_windows_state.hovered_close_index);
-                }
+        let dpi_scale = get_dpi_scale(self.hwnd);
+        let removed_hwnd = {
+            let Some(session) = self.switch_windows_state.overlay.as_mut() else {
+                return;
+            };
+            if index >= session.items.len() {
+                return;
+            }
+
+            let item = session.items.remove(index);
+            let work_area = RectI::from(get_monitor_work_area(session.original_hwnd));
+            reflow_overlay_session(session, work_area, dpi_scale, index);
+            item.hwnd
+        };
+
+        unsafe {
+            let _ = PostMessageW(Some(removed_hwnd), WM_CLOSE, WPARAM(0), LPARAM(0));
+        }
+        if self
+            .switch_windows_state
+            .overlay
+            .as_ref()
+            .is_some_and(|session| session.items.is_empty())
+        {
+            self.switch_windows_state.overlay.take();
+            self.painter.unpaint_window_grid();
+        } else {
+            self.repaint_window_grid();
+        }
+    }
+
+    fn repaint_window_grid(&mut self) {
+        if !self.prune_invalid_overlay() {
+            return;
+        }
+        if let Some(session) = self.switch_windows_state.overlay.as_ref() {
+            self.painter
+                .paint_window_grid(session, self.config.switch_windows_enable_quick_actions);
+        }
+    }
+
+    fn hit_test_window_grid(&self) -> Option<GridHitTarget> {
+        let session = self.switch_windows_state.overlay.as_ref()?;
+        let mut cursor = POINT::default();
+        unsafe { GetCursorPos(&mut cursor).ok()? };
+        session.layout.hit_test(
+            PointI {
+                x: cursor.x,
+                y: cursor.y,
+            },
+            self.config.switch_windows_enable_quick_actions,
+        )
+    }
+
+    fn prune_invalid_overlay(&mut self) -> bool {
+        let Some(original_hwnd) = self
+            .switch_windows_state
+            .overlay
+            .as_ref()
+            .map(|session| session.original_hwnd)
+        else {
+            return false;
+        };
+        let work_area = RectI::from(get_monitor_work_area(original_hwnd));
+        let dpi_scale = get_dpi_scale(self.hwnd);
+        let has_items = self
+            .switch_windows_state
+            .overlay
+            .as_mut()
+            .is_some_and(|session| {
+                prune_overlay_items(session, work_area, dpi_scale, |item_hwnd| unsafe {
+                    IsWindow(Some(item_hwnd)).as_bool()
+                })
+            });
+        if !has_items {
+            self.switch_windows_state.overlay.take();
+            self.painter.unpaint_window_grid();
+        }
+        has_items
+    }
+
+    #[allow(dead_code)]
+    fn cancel_switch_windows(&mut self) {
+        if let Some(session) = self.switch_windows_state.overlay.take() {
+            self.painter.unpaint_window_grid();
+            if unsafe { IsWindow(Some(session.original_hwnd)).as_bool() } {
+                set_foreground_window(session.original_hwnd);
             }
         }
     }
@@ -679,13 +770,10 @@ fn get_app(hwnd: HWND) -> Result<&'static mut App> {
     }
 }
 
-#[derive(Debug)]
 struct SwitchWindowsState {
     cache: Option<(String, HWND, usize, Vec<isize>)>,
     modifier_released: bool,
-    overlay_windows: Option<Vec<WindowOverlayItem>>,
-    overlay_index: usize,
-    hovered_close_index: Option<usize>,
+    overlay: Option<WindowOverlaySession>,
 }
 
 #[derive(Debug)]
@@ -694,9 +782,144 @@ pub struct SwitchAppsState {
     pub index: usize,
 }
 
-#[derive(Debug, Clone)]
-pub struct WindowOverlayItem {
-    pub hwnd: HWND,
-    pub title: String,
-    pub hicon: Option<HICON>,
+fn normalize_overlay_title(title: &str) -> String {
+    if title.trim().is_empty() {
+        "Untitled".to_string()
+    } else {
+        title.to_string()
+    }
+}
+
+fn reflow_overlay_session(
+    session: &mut WindowOverlaySession,
+    work_area: RectI,
+    dpi_scale: f64,
+    selected: usize,
+) {
+    session.selected = selected.min(session.items.len().saturating_sub(1));
+    session.hovered = None;
+    session.hovered_close = None;
+    session.layout =
+        WindowGridLayout::new(work_area, dpi_scale, session.items.len(), session.selected);
+}
+
+fn update_overlay_hover(session: &mut WindowOverlaySession, target: Option<GridHitTarget>) -> bool {
+    let (hovered, hovered_close) = match target {
+        Some(GridHitTarget::Card(index)) => (Some(index), None),
+        Some(GridHitTarget::CloseButton(index)) => (Some(index), Some(index)),
+        None => (None, None),
+    };
+    let changed = session.hovered != hovered || session.hovered_close != hovered_close;
+    if changed {
+        session.hovered = hovered;
+        session.hovered_close = hovered_close;
+    }
+    changed
+}
+
+fn prune_overlay_items(
+    session: &mut WindowOverlaySession,
+    work_area: RectI,
+    dpi_scale: f64,
+    mut is_valid: impl FnMut(HWND) -> bool,
+) -> bool {
+    let old_len = session.items.len();
+    session.items.retain(|item| is_valid(item.hwnd));
+    if session.items.len() != old_len {
+        let selected = session.selected;
+        reflow_overlay_session(session, work_area, dpi_scale, selected);
+    }
+    !session.items.is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::window_grid::{GridHitTarget, RectI, WindowGridLayout};
+    use crate::window_overlay::{WindowOverlayItem as GridOverlayItem, WindowOverlaySession};
+
+    const WORK_AREA: RectI = RectI::new(0, 0, 1920, 1080);
+
+    fn overlay_session(count: usize, selected: usize) -> WindowOverlaySession {
+        WindowOverlaySession {
+            app_name: "Example".to_string(),
+            app_icon: HICON::default(),
+            original_hwnd: HWND(1 as _),
+            items: (0..count)
+                .map(|index| GridOverlayItem {
+                    hwnd: HWND((index + 1) as _),
+                    title: format!("Window {}", index + 1),
+                    thumbnail: None,
+                })
+                .collect(),
+            selected,
+            hovered: None,
+            hovered_close: None,
+            layout: WindowGridLayout::new(WORK_AREA, 1.0, count, selected),
+        }
+    }
+
+    #[test]
+    fn normalizes_blank_overlay_titles() {
+        assert_eq!(normalize_overlay_title(" \t"), "Untitled");
+        assert_eq!(normalize_overlay_title("Document"), "Document");
+    }
+
+    #[test]
+    fn hover_updates_never_change_keyboard_selection() {
+        let mut session = overlay_session(6, 4);
+
+        assert!(update_overlay_hover(
+            &mut session,
+            Some(GridHitTarget::Card(2))
+        ));
+        assert_eq!(session.selected, 4);
+        assert_eq!(session.hovered, Some(2));
+        assert_eq!(session.hovered_close, None);
+
+        assert!(update_overlay_hover(
+            &mut session,
+            Some(GridHitTarget::CloseButton(3))
+        ));
+        assert_eq!(session.selected, 4);
+        assert_eq!(session.hovered, Some(3));
+        assert_eq!(session.hovered_close, Some(3));
+
+        assert!(update_overlay_hover(&mut session, None));
+        assert_eq!(session.selected, 4);
+        assert_eq!(session.hovered, None);
+        assert_eq!(session.hovered_close, None);
+        assert!(!update_overlay_hover(&mut session, None));
+    }
+
+    #[test]
+    fn pruning_invalid_items_clamps_selection_and_reflows() {
+        let mut session = overlay_session(12, 11);
+        session.hovered = Some(11);
+        session.hovered_close = Some(11);
+
+        assert!(prune_overlay_items(
+            &mut session,
+            WORK_AREA,
+            1.0,
+            |hwnd| hwnd.0 as isize <= 6,
+        ));
+
+        assert_eq!(session.items.len(), 6);
+        assert_eq!(session.selected, 5);
+        assert_eq!(session.hovered, None);
+        assert_eq!(session.hovered_close, None);
+        assert_eq!(session.layout.total_items, 6);
+        assert_eq!(session.layout.page_start, 0);
+    }
+
+    #[test]
+    fn pruning_every_item_reports_empty_session() {
+        let mut session = overlay_session(2, 1);
+
+        assert!(!prune_overlay_items(&mut session, WORK_AREA, 1.0, |_| {
+            false
+        },));
+        assert!(session.items.is_empty());
+    }
 }

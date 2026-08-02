@@ -21,8 +21,8 @@ use windows::Win32::{
         GetWindowLongPtrW, LoadCursorW, PostMessageW, PostQuitMessage, RegisterClassW,
         RegisterWindowMessageW, SetWindowLongPtrW, TranslateMessage, CS_HREDRAW, CS_VREDRAW,
         CW_USEDEFAULT, GWL_STYLE, HICON, HTCLIENT, IDC_ARROW, MSG, WINDOW_STYLE, WM_COMMAND,
-        WM_ERASEBKGND, WM_LBUTTONUP, WM_NCHITTEST, WM_RBUTTONUP, WNDCLASSW, WS_CAPTION,
-        WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
+        WM_ERASEBKGND, WM_LBUTTONUP, WM_MOUSEMOVE, WM_NCHITTEST, WM_RBUTTONUP, WNDCLASSW,
+        WS_CAPTION, WS_EX_LAYERED, WS_EX_TOOLWINDOW, WS_EX_TOPMOST,
     },
 };
 
@@ -261,6 +261,10 @@ impl App {
                 let app = get_app(hwnd)?;
                 app.click();
             }
+            WM_MOUSEMOVE => {
+                let app = get_app(hwnd)?;
+                app.hover();
+            }
             WM_COMMAND => {
                 let value = wparam.0 as u32;
                 let kind = ((value >> 16) & 0xffff) as u16;
@@ -303,6 +307,7 @@ impl App {
             self.config.switch_windows_ignore_minimal,
             self.config.switch_windows_only_current_desktop(),
             self.is_admin,
+            self.config.switch_windows_merge_browser_profiles,
         )?;
         debug!(
             "switch windows: hwnd:{hwnd:?} reverse:{reverse} state:{:?}",
@@ -405,6 +410,7 @@ impl App {
             self.config.switch_apps_ignore_minimal,
             self.config.switch_apps_only_current_desktop(),
             self.is_admin,
+            self.config.switch_windows_merge_browser_profiles,
         )?;
         let mut apps = vec![];
         for (module_path, hwnds) in windows.iter() {
@@ -449,6 +455,17 @@ impl App {
             if let Some(i) = self.painter.find_clicked_app_index(state) {
                 state.index = i;
                 self.do_switch_app();
+            }
+        }
+    }
+
+    fn hover(&mut self) {
+        if let Some(state) = self.switch_apps_state.as_mut() {
+            if let Some(i) = self.painter.find_clicked_app_index(state) {
+                if state.index != i {
+                    state.index = i;
+                    self.painter.paint(state);
+                }
             }
         }
     }

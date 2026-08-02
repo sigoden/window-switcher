@@ -433,6 +433,7 @@ pub fn list_windows(
     ignore_minimal: bool,
     only_current_desktop: bool,
     is_admin: bool,
+    merge_browser_profiles: bool,
 ) -> Result<IndexMap<String, Vec<(HWND, String)>>> {
     let mut result: IndexMap<String, Vec<(HWND, String)>> = IndexMap::new();
     let mut hwnds: Vec<HWND> = Default::default();
@@ -471,7 +472,9 @@ pub fn list_windows(
                     continue;
                 }
             }
-            let key = if is_chrome_browser(&module_path) {
+            let key = if merge_browser_profiles {
+                module_path.clone()
+            } else if is_chrome_browser(&module_path) {
                 match get_chrome_aumid_info(hwnd) {
                     (Some(profile), Some(app_id)) => {
                         format!("{}::{}::{}", module_path, profile, app_id)

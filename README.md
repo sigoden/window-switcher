@@ -2,16 +2,13 @@
 
 Window-Switcher offers hotkeys for quickly switching windows on Windows OS:
 
-1. `Alt+Backtick`: switch between windows belonging to the foreground app.
+1. `Alt+Backtick`: switch between windows belonging to the foreground app using a responsive visual grid.
 
-   Hold Alt and press Backtick repeatedly to move through a responsive preview
-   grid. Release Alt to activate the selected window, use Shift to move
-   backward, or press Escape to cancel.
+   Hold Alt and press Backtick repeatedly to navigate through the visual preview grid. Release Alt to activate the selected window, hold Shift (`Alt+Shift+` `) to navigate backward, or press Escape to cancel switching.
 
-   The grid shows cached, aspect-correct previews and readable window titles.
-   With more than ten windows, selection moves between ten-window pages.
+   The visual grid displays cached, aspect-correct window previews along with app icons and readable titles. When switching between more than ten windows, selection seamlessly pages in 10-window layouts.
 
-![switch-windows](https://github.com/sigoden/window-switcher/assets/4012553/06d387ce-31fd-450b-adf3-01bfcfc4bce3)
+![Visual Windows Grid Showcase](assets/showcase.gif)
 
 2. ```Alt+Tab```: switch between apps. (disabled by default)
 
